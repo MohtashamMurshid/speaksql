@@ -19,6 +19,8 @@ import {
   Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface TableSchema {
   name: string;
@@ -278,9 +280,33 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
                   </span>
                 </div>
                 <div className="prose prose-sm max-w-none text-foreground">
-                  <pre className="whitespace-pre-wrap font-sans">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      pre: ({ ...props }) => (
+                        <pre
+                          className="whitespace-pre-wrap font-sans"
+                          {...props}
+                        />
+                      ),
+                      code: ({ className, children, ...props }) => {
+                        const inline = "inline" in props ? props.inline : false;
+                        return (
+                          <code
+                            className={cn(
+                              className,
+                              !inline && "block bg-muted px-2 py-1 rounded"
+                            )}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        );
+                      },
+                    }}
+                  >
                     {message.content}
-                  </pre>
+                  </ReactMarkdown>
                 </div>
                 {message.role === "assistant" && (
                   <div className="flex gap-2 mt-2">

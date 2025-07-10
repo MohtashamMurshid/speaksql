@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Play, Copy, Loader2, XCircle, Database } from "lucide-react";
+import { databaseService } from "@/lib/database-service";
 
 interface TableSchema {
   name: string;
@@ -83,17 +84,13 @@ export function QueryEditor({ schema }: QueryEditorProps) {
 
     setIsExecuting(true);
     setError(null);
+    setResult(null);
 
     try {
-      // Simulate query execution
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // TODO: Implement actual query execution
-      setError(
-        "Query execution not yet implemented. Please import data first."
-      );
+      const queryResult = await databaseService.executeQuery(query);
+      setResult(queryResult);
     } catch (err) {
-      setError("Query execution failed: " + (err as Error).message);
+      setError((err as Error).message);
     } finally {
       setIsExecuting(false);
     }

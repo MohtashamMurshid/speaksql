@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { DatabaseChat } from "@/components/database-chat";
 import { SchemaVisualizer } from "@/components/schema-visualizer";
@@ -8,6 +8,7 @@ import { QueryEditor } from "@/components/query-editor";
 import { DataImporter } from "@/components/data-importer";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Database, MessageSquare, Code, Upload } from "lucide-react";
+import { databaseService } from "@/lib/database-service";
 
 type Tab = "chat" | "schema" | "query" | "import";
 
@@ -39,6 +40,22 @@ interface ImportedData {
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("import");
   const [databaseSchema, setDatabaseSchema] = useState<TableSchema[]>([]);
+
+  // Initialize database service
+  useEffect(() => {
+    const initializeDatabase = async () => {
+      try {
+        await databaseService.initializeCsvDatabase();
+        // Load existing schema if any
+        const schema = await databaseService.getSchema();
+        setDatabaseSchema(schema);
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+      }
+    };
+
+    initializeDatabase();
+  }, []);
 
   const tabs = [
     {
