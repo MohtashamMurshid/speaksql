@@ -16,6 +16,7 @@ import {
   Copy,
   Play,
   RefreshCw,
+  Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,17 +37,32 @@ interface DatabaseChatProps {
   schema: TableSchema[];
 }
 
+interface SpeechRecognitionEvent {
+  results: Array<Array<{ transcript: string }>>;
+}
+
 declare global {
   interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
   }
+}
+
+interface SpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: () => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
 }
 
 export function DatabaseChat({ schema }: DatabaseChatProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -89,7 +105,7 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
         recognitionRef.current.interimResults = false;
         recognitionRef.current.lang = "en-US";
 
-        recognitionRef.current.onresult = (event: any) => {
+        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
           const transcript = event.results[0][0].transcript;
           setInput(transcript);
           setIsListening(false);
@@ -143,14 +159,14 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
       {/* Header */}
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
-            <Bot className="h-6 w-6 text-blue-600" />
+          <div className="p-2 bg-accent rounded-lg">
+            <Bot className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-xl font-semibold text-foreground">
               Database AI Assistant
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
+            <p className="text-sm text-muted-foreground">
               Ask questions about your data in plain English
             </p>
           </div>
@@ -169,15 +185,15 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
 
       {/* Schema Overview */}
       {schema.length > 0 && (
-        <div className="mb-4 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg mx-6">
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <div className="mb-4 p-3 bg-muted rounded-lg mx-6">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">
             Available Tables:
           </h3>
           <div className="flex flex-wrap gap-2">
             {schema.map((table) => (
               <span
                 key={table.name}
-                className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs rounded-md font-medium"
+                className="px-2 py-1 bg-accent text-accent-foreground text-xs rounded-md font-medium"
               >
                 {table.name} ({table.columns.length} columns)
               </span>
@@ -191,27 +207,48 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
         <div className="space-y-4">
           {messages.length === 0 && (
             <div className="text-center py-8">
-              <Bot className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Welcome to SpeakSQL!
-              </h3>
-              <p className="text-gray-600 dark:text-gray-300 mb-4">
-                Ask me anything about your database. I can help you:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-md mx-auto text-sm">
-                <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded text-blue-700 dark:text-blue-300">
-                  Generate SQL queries
-                </div>
-                <div className="p-2 bg-green-50 dark:bg-green-950 rounded text-green-700 dark:text-green-300">
-                  Explain data relationships
-                </div>
-                <div className="p-2 bg-purple-50 dark:bg-purple-950 rounded text-purple-700 dark:text-purple-300">
-                  Analyze data patterns
-                </div>
-                <div className="p-2 bg-orange-50 dark:bg-orange-950 rounded text-orange-700 dark:text-orange-300">
-                  Optimize queries
-                </div>
-              </div>
+              {schema.length > 0 ? (
+                <>
+                  <Bot className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">
+                    Welcome to SpeakSQL!
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    Ask me anything about your database. I can help you:
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-md mx-auto text-sm">
+                    <div className="p-2 bg-accent rounded text-accent-foreground">
+                      Generate SQL queries
+                    </div>
+                    <div className="p-2 bg-accent rounded text-accent-foreground">
+                      Explain data relationships
+                    </div>
+                    <div className="p-2 bg-accent rounded text-accent-foreground">
+                      Analyze data patterns
+                    </div>
+                    <div className="p-2 bg-accent rounded text-accent-foreground">
+                      Optimize queries
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">
+                    No Data Available
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    Import CSV files to start chatting with your data
+                  </p>
+                  <div className="max-w-md mx-auto">
+                    <p className="text-sm text-muted-foreground">
+                      Go to the &quot;Import Data&quot; tab to upload your CSV
+                      files, then return here to ask questions about your data
+                      in natural language.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -220,19 +257,17 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
               key={message.id}
               className={cn(
                 "flex gap-3 p-4 rounded-lg",
-                message.role === "user"
-                  ? "bg-blue-50 dark:bg-blue-950 ml-8"
-                  : "bg-gray-50 dark:bg-slate-700 mr-8"
+                message.role === "user" ? "bg-secondary ml-8" : "bg-muted mr-8"
               )}
             >
               <div className="flex-shrink-0">
                 {message.role === "user" ? (
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
-                    <User className="h-4 w-4 text-blue-600" />
+                  <div className="p-2 bg-primary rounded-lg">
+                    <User className="h-4 w-4 text-primary-foreground" />
                   </div>
                 ) : (
-                  <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                    <Bot className="h-4 w-4 text-gray-600" />
+                  <div className="p-2 bg-accent rounded-lg">
+                    <Bot className="h-4 w-4 text-accent-foreground" />
                   </div>
                 )}
               </div>
@@ -242,7 +277,7 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
                     {message.role === "user" ? "You" : "AI Assistant"}
                   </span>
                 </div>
-                <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="prose prose-sm max-w-none text-foreground">
                   <pre className="whitespace-pre-wrap font-sans">
                     {message.content}
                   </pre>
@@ -276,16 +311,16 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
           ))}
 
           {isLoading && (
-            <div className="flex gap-3 p-4 rounded-lg bg-gray-50 dark:bg-slate-700 mr-8">
+            <div className="flex gap-3 p-4 rounded-lg bg-muted mr-8">
               <div className="flex-shrink-0">
-                <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                  <Bot className="h-4 w-4 text-gray-600" />
+                <div className="p-2 bg-accent rounded-lg">
+                  <Bot className="h-4 w-4 text-accent-foreground" />
                 </div>
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                  <span className="text-sm text-muted-foreground">
                     AI is thinking...
                   </span>
                 </div>
@@ -297,7 +332,7 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
       </ScrollArea>
 
       {/* Input Form */}
-      <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+      <div className="p-6 border-t border-border">
         <form onSubmit={handleFormSubmit} className="flex gap-3">
           <div className="flex-1 relative">
             <Textarea
@@ -318,7 +353,7 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
                 disabled={isLoading}
               >
                 {isListening ? (
-                  <MicOff className="h-4 w-4 text-red-500" />
+                  <MicOff className="h-4 w-4 text-destructive" />
                 ) : (
                   <Mic className="h-4 w-4" />
                 )}
@@ -330,7 +365,7 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
           </Button>
         </form>
         {isListening && (
-          <p className="text-sm text-blue-600 dark:text-blue-400 mt-2 text-center">
+          <p className="text-sm text-primary mt-2 text-center">
             🎤 Listening... Speak your question
           </p>
         )}

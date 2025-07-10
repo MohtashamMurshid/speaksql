@@ -6,6 +6,7 @@ import { DatabaseChat } from "@/components/database-chat";
 import { SchemaVisualizer } from "@/components/schema-visualizer";
 import { QueryEditor } from "@/components/query-editor";
 import { DataImporter } from "@/components/data-importer";
+import { ModeToggle } from "@/components/mode-toggle";
 import { Database, MessageSquare, Code, Upload } from "lucide-react";
 
 type Tab = "chat" | "schema" | "query" | "import";
@@ -23,34 +24,21 @@ interface TableSchema {
   }>;
 }
 
+interface ImportedData {
+  fileName: string;
+  tableName: string;
+  columns: Array<{
+    name: string;
+    type: string;
+    sample: string;
+  }>;
+  rowCount: number;
+  preview: string[][];
+}
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<Tab>("chat");
-  const [databaseSchema, setDatabaseSchema] = useState<TableSchema[]>([
-    // Sample schema for demonstration
-    {
-      name: "users",
-      columns: [
-        { name: "id", type: "INTEGER", primaryKey: true },
-        { name: "name", type: "VARCHAR(255)" },
-        { name: "email", type: "VARCHAR(255)" },
-        { name: "created_at", type: "TIMESTAMP" },
-      ],
-    },
-    {
-      name: "orders",
-      columns: [
-        { name: "id", type: "INTEGER", primaryKey: true },
-        {
-          name: "user_id",
-          type: "INTEGER",
-          foreignKey: { table: "users", column: "id" },
-        },
-        { name: "product_name", type: "VARCHAR(255)" },
-        { name: "amount", type: "DECIMAL(10,2)" },
-        { name: "order_date", type: "TIMESTAMP" },
-      ],
-    },
-  ]);
+  const [activeTab, setActiveTab] = useState<Tab>("import");
+  const [databaseSchema, setDatabaseSchema] = useState<TableSchema[]>([]);
 
   const tabs = [
     {
@@ -105,25 +93,28 @@ export default function Home() {
     }
   };
 
-  const handleDataImport = (data: any) => {
+  const handleDataImport = (data: ImportedData) => {
     console.log("Data imported:", data);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Database className="h-10 w-10 text-blue-600" />
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              SpeakSQL
-            </h1>
+        {/* Header with Theme Toggle */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="text-center flex-1">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <Database className="h-10 w-10 text-primary" />
+              <h1 className="text-5xl font-bold text-primary">SpeakSQL</h1>
+            </div>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              Chat with your database in plain English • Visualize schemas
+              interactively • Execute SQL with AI assistance
+            </p>
           </div>
-          <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
-            Chat with your database in plain English • Visualize schemas
-            interactively • Execute SQL with AI assistance
-          </p>
+          <div className="absolute top-6 right-6">
+            <ModeToggle />
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -138,7 +129,7 @@ export default function Home() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-6 py-3 transition-all duration-200 ${
                   activeTab === tab.id
-                    ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg scale-105"
+                    ? "shadow-lg scale-105"
                     : "hover:scale-105 hover:shadow-md"
                 }`}
               >
@@ -155,12 +146,12 @@ export default function Home() {
         </div>
 
         {/* Main Content Area */}
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="bg-card rounded-2xl shadow-xl border border-border overflow-hidden">
           <div className="p-6">{renderActiveTab()}</div>
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-8 text-sm text-gray-500 dark:text-gray-400">
+        <div className="text-center mt-8 text-sm text-muted-foreground">
           Built with Next.js, Vercel AI SDK, React Flow, and shadcn/ui
         </div>
       </div>

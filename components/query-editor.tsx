@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Play, Download, Copy, Trash2, Save, FileText } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Play, Copy, Loader2, XCircle, Database } from "lucide-react";
 
 interface TableSchema {
   name: string;
@@ -26,49 +27,56 @@ interface QueryEditorProps {
 
 interface QueryResult {
   columns: string[];
-  rows: any[][];
+  rows: string[][];
   rowCount: number;
   executionTime: number;
 }
 
 export function QueryEditor({ schema }: QueryEditorProps) {
-  const [query, setQuery] = useState("SELECT * FROM users LIMIT 10;");
+  const [query, setQuery] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const sampleQueries = [
-    {
-      name: "List all users",
-      sql: "SELECT * FROM users LIMIT 10;",
-    },
-    {
-      name: "Users with orders",
-      sql: `SELECT u.name, u.email, COUNT(o.id) as order_count
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id
-GROUP BY u.id, u.name, u.email
-ORDER BY order_count DESC;`,
-    },
-    {
-      name: "Recent orders",
-      sql: `SELECT o.id, u.name, o.product_name, o.amount, o.order_date
-FROM orders o
-JOIN users u ON o.user_id = u.id
-ORDER BY o.order_date DESC
-LIMIT 20;`,
-    },
-    {
-      name: "Monthly revenue",
-      sql: `SELECT 
-  DATE_FORMAT(order_date, '%Y-%m') as month,
-  SUM(amount) as total_revenue,
-  COUNT(*) as order_count
-FROM orders 
-GROUP BY DATE_FORMAT(order_date, '%Y-%m')
-ORDER BY month DESC;`,
-    },
-  ];
+  // Generate sample queries based on actual schema
+  const sampleQueries =
+    schema.length > 0
+      ? [
+          {
+            name: `List all ${schema[0].name}`,
+            sql: `SELECT * FROM ${schema[0].name} LIMIT 10;`,
+          },
+          ...(schema.length > 1
+            ? [
+                {
+                  name: `Count records in ${schema[1].name}`,
+                  sql: `SELECT COUNT(*) as total_count FROM ${schema[1].name};`,
+                },
+              ]
+            : []),
+          ...(schema.some((table) =>
+            table.columns.some((col) => col.foreignKey)
+          )
+            ? [
+                {
+                  name: "Join tables",
+                  sql: (() => {
+                    const tableWithFK = schema.find((table) =>
+                      table.columns.some((col) => col.foreignKey)
+                    );
+                    const fkColumn = tableWithFK?.columns.find(
+                      (col) => col.foreignKey
+                    );
+                    if (tableWithFK && fkColumn?.foreignKey) {
+                      return `SELECT t1.*, t2.*\nFROM ${tableWithFK.name} t1\nJOIN ${fkColumn.foreignKey.table} t2 ON t1.${fkColumn.name} = t2.${fkColumn.foreignKey.column}\nLIMIT 10;`;
+                    }
+                    return "";
+                  })(),
+                },
+              ]
+            : []),
+        ].filter((query) => query.sql)
+      : [];
 
   const executeQuery = async () => {
     if (!query.trim()) return;
@@ -80,19 +88,10 @@ ORDER BY month DESC;`,
       // Simulate query execution
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Mock result for demonstration
-      const mockResult: QueryResult = {
-        columns: ["id", "name", "email", "created_at"],
-        rows: [
-          [1, "John Doe", "john@example.com", "2024-01-15T10:30:00Z"],
-          [2, "Jane Smith", "jane@example.com", "2024-01-16T14:22:00Z"],
-          [3, "Bob Johnson", "bob@example.com", "2024-01-17T09:15:00Z"],
-        ],
-        rowCount: 3,
-        executionTime: 45,
-      };
-
-      setResult(mockResult);
+      // TODO: Implement actual query execution
+      setError(
+        "Query execution not yet implemented. Please import data first."
+      );
     } catch (err) {
       setError("Query execution failed: " + (err as Error).message);
     } finally {
@@ -132,10 +131,10 @@ ORDER BY month DESC;`,
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+          <h2 className="text-2xl font-semibold text-foreground">
             SQL Query Editor
           </h2>
-          <p className="text-gray-600 dark:text-gray-300">
+          <p className="text-muted-foreground">
             Execute SQL queries with AI assistance and syntax highlighting
           </p>
         </div>
@@ -144,13 +143,13 @@ ORDER BY month DESC;`,
             <Copy className="w-4 h-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={clearQuery}>
-            <Trash2 className="w-4 h-4" />
+            <XCircle className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
       {/* Schema Reference */}
-      {schema.length > 0 && (
+      {schema.length > 0 ? (
         <Card>
           <CardHeader className="pb-3">
             <h3 className="font-semibold">Available Tables</h3>
@@ -168,16 +167,14 @@ ORDER BY month DESC;`,
                   <div className="space-y-1 text-sm">
                     {table.columns.slice(0, 4).map((column) => (
                       <div key={column.name} className="flex justify-between">
-                        <span className="text-gray-700 dark:text-gray-300">
-                          {column.name}
-                        </span>
-                        <span className="text-gray-500 text-xs">
+                        <span className="text-foreground">{column.name}</span>
+                        <span className="text-muted-foreground text-xs">
                           {column.type}
                         </span>
                       </div>
                     ))}
                     {table.columns.length > 4 && (
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         +{table.columns.length - 4} more...
                       </div>
                     )}
@@ -187,33 +184,62 @@ ORDER BY month DESC;`,
             </div>
           </CardContent>
         </Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-3">
+            <h3 className="font-semibold">Schema</h3>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center text-muted-foreground py-8">
+              <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium mb-2">No Database Schema</p>
+              <p>
+                Import CSV files in the &quot;Import Data&quot; tab to get
+                started
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Sample Queries */}
-      <Card>
-        <CardHeader className="pb-3">
-          <h3 className="font-semibold">Sample Queries</h3>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {sampleQueries.map((sample, index) => (
-              <Button
-                key={index}
-                variant="outline"
-                className="justify-start h-auto p-3"
-                onClick={() => setQuery(sample.sql)}
-              >
-                <div className="text-left">
-                  <div className="font-medium">{sample.name}</div>
-                  <div className="text-xs text-gray-500 truncate">
-                    {sample.sql.split("\n")[0]}...
+      {sampleQueries.length > 0 ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <h3 className="font-semibold">Sample Queries</h3>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {sampleQueries.map((sample, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  className="justify-start h-auto p-3"
+                  onClick={() => setQuery(sample.sql)}
+                >
+                  <div className="text-left">
+                    <div className="font-medium">{sample.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {sample.sql.split("\n")[0]}...
+                    </div>
                   </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center text-muted-foreground">
+              <p>
+                No data available. Please import CSV files to see sample
+                queries.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Query Editor */}
       <Card>
@@ -227,7 +253,11 @@ ORDER BY month DESC;`,
                 size="sm"
               >
                 <Play className="w-4 h-4 mr-2" />
-                {isExecuting ? "Executing..." : "Execute"}
+                {isExecuting ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  "Execute"
+                )}
               </Button>
             </div>
           </div>
@@ -245,9 +275,9 @@ ORDER BY month DESC;`,
 
       {/* Results */}
       {error && (
-        <Card className="border-red-200 dark:border-red-800">
+        <Card className="border-destructive">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <div className="flex items-center gap-2 text-destructive">
               <div className="font-semibold">Error:</div>
               <div>{error}</div>
             </div>
@@ -261,18 +291,18 @@ ORDER BY month DESC;`,
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold">Query Results</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-muted-foreground">
                   {result.rowCount} rows returned in {result.executionTime}ms
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={downloadResults}>
-                <Download className="w-4 h-4 mr-2" />
+                <Copy className="w-4 h-4 mr-2" />
                 Export CSV
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            <ScrollArea className="h-[300px]">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
@@ -285,10 +315,7 @@ ORDER BY month DESC;`,
                 </thead>
                 <tbody>
                   {result.rows.map((row, index) => (
-                    <tr
-                      key={index}
-                      className="border-b hover:bg-gray-50 dark:hover:bg-gray-800"
-                    >
+                    <tr key={index} className="border-b hover:bg-muted">
                       {row.map((cell, cellIndex) => (
                         <td key={cellIndex} className="p-2">
                           {cell?.toString() || "NULL"}
@@ -298,7 +325,7 @@ ORDER BY month DESC;`,
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollArea>
           </CardContent>
         </Card>
       )}

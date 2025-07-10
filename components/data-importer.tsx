@@ -4,16 +4,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Upload,
-  FileText,
-  Check,
-  X,
-  Download,
-  Eye,
-  Table,
-  Database,
-} from "lucide-react";
+import { Upload, FileText, X, Table, Database } from "lucide-react";
 
 interface TableSchema {
   name: string;
@@ -29,7 +20,7 @@ interface TableSchema {
 }
 
 interface DataImporterProps {
-  onDataImported: (data: any) => void;
+  onDataImported: (data: ImportedData) => void;
   schema: TableSchema[];
   onSchemaChange: (schema: TableSchema[]) => void;
 }
@@ -43,7 +34,7 @@ interface ImportedData {
     sample: string;
   }>;
   rowCount: number;
-  preview: any[][];
+  preview: string[][];
 }
 
 export function DataImporter({
@@ -208,10 +199,10 @@ export function DataImporter({
     <div className="space-y-6">
       {/* Header */}
       <div className="text-center">
-        <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
+        <h2 className="text-2xl font-semibold text-foreground mb-2">
           Data Importer
         </h2>
-        <p className="text-gray-600 dark:text-gray-300">
+        <p className="text-muted-foreground">
           Import CSV files and automatically generate database schemas
         </p>
       </div>
@@ -219,9 +210,7 @@ export function DataImporter({
       {/* File Drop Zone */}
       <Card
         className={`border-dashed border-2 transition-colors ${
-          dragOver
-            ? "border-blue-400 bg-blue-50 dark:bg-blue-950"
-            : "border-gray-300 dark:border-gray-600"
+          dragOver ? "border-primary bg-accent" : "border-border"
         }`}
         onDrop={handleDrop}
         onDragOver={(e) => {
@@ -231,11 +220,11 @@ export function DataImporter({
         onDragLeave={() => setDragOver(false)}
       >
         <CardContent className="p-12 text-center">
-          <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+          <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-foreground mb-2">
             Drop CSV files here
           </h3>
-          <p className="text-gray-600 dark:text-gray-300 mb-4">
+          <p className="text-muted-foreground mb-4">
             Or click to select files from your computer
           </p>
           <Button
@@ -259,24 +248,21 @@ export function DataImporter({
       {/* Imported Files */}
       {importedFiles.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h3 className="text-lg font-semibold text-foreground">
             Imported Files ({importedFiles.length})
           </h3>
 
           {importedFiles.map((file, index) => (
-            <Card
-              key={index}
-              className="border-green-200 dark:border-green-800"
-            >
+            <Card key={index} className="border-primary/20">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
-                      <Table className="w-5 h-5 text-green-600" />
+                    <div className="p-2 bg-accent rounded-lg">
+                      <Table className="w-5 h-5 text-primary" />
                     </div>
                     <div>
                       <h4 className="font-semibold">{file.fileName}</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                      <p className="text-sm text-muted-foreground">
                         {file.rowCount} rows • {file.columns.length} columns
                       </p>
                     </div>
@@ -309,7 +295,7 @@ export function DataImporter({
                     {file.columns.map((column, colIndex) => (
                       <div
                         key={colIndex}
-                        className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded"
+                        className="flex items-center justify-between p-2 bg-muted rounded"
                       >
                         <span className="font-medium text-sm">
                           {column.name}
@@ -328,7 +314,7 @@ export function DataImporter({
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border rounded">
                       <thead>
-                        <tr className="bg-gray-50 dark:bg-gray-800">
+                        <tr className="bg-muted">
                           {file.columns.map((column) => (
                             <th
                               key={column.name}
@@ -380,7 +366,9 @@ export function DataImporter({
                     {table.columns.map((column) => (
                       <div key={column.name} className="flex justify-between">
                         <span>{column.name}</span>
-                        <span className="text-gray-500">{column.type}</span>
+                        <span className="text-muted-foreground">
+                          {column.type}
+                        </span>
                       </div>
                     ))}
                   </div>

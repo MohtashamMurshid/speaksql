@@ -14,11 +14,12 @@ import {
   MiniMap,
   Handle,
   Position,
+  MarkerType,
 } from "@xyflow/react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Eye, EyeOff, Download, RefreshCw, Plus } from "lucide-react";
+import { Eye, EyeOff, Download, RefreshCw, Database } from "lucide-react";
 import dagre from "dagre";
 
 import "@xyflow/react/dist/style.css";
@@ -36,20 +37,33 @@ interface TableSchema {
   }>;
 }
 
+interface TableColumn {
+  name: string;
+  type: string;
+  primaryKey?: boolean;
+  foreignKey?: {
+    table: string;
+    column: string;
+  };
+}
+
+interface TableNodeData {
+  tableName: string;
+  columns: TableColumn[];
+}
+
 interface SchemaVisualizerProps {
   schema: TableSchema[];
-  onSchemaChange: (schema: TableSchema[]) => void;
+  onSchemaChange?: (schema: TableSchema[]) => void;
 }
 
 // Custom Table Node Component
-function TableNode({ data }: { data: any }) {
+function TableNode({ data }: { data: TableNodeData }) {
   return (
-    <Card className="min-w-[250px] shadow-lg border-2 border-blue-200 dark:border-blue-800">
-      <CardHeader className="pb-2 bg-blue-50 dark:bg-blue-950">
+    <Card className="min-w-[250px] shadow-lg border-2 border-primary/20">
+      <CardHeader className="pb-2 bg-accent">
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-lg text-blue-800 dark:text-blue-200">
-            {data.tableName}
-          </h3>
+          <h3 className="font-bold text-lg text-primary">{data.tableName}</h3>
           <Badge variant="secondary" className="text-xs">
             {data.columns.length} cols
           </Badge>
@@ -57,10 +71,10 @@ function TableNode({ data }: { data: any }) {
       </CardHeader>
       <CardContent className="p-3">
         <div className="space-y-1">
-          {data.columns.map((column: any, index: number) => (
+          {data.columns.map((column: TableColumn, index: number) => (
             <div
               key={column.name}
-              className="flex items-center justify-between text-sm p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="flex items-center justify-between text-sm p-2 rounded hover:bg-muted"
             >
               <div className="flex items-center gap-2">
                 <span className="font-medium">{column.name}</span>
@@ -75,7 +89,9 @@ function TableNode({ data }: { data: any }) {
                   </Badge>
                 )}
               </div>
-              <span className="text-gray-500 text-xs">{column.type}</span>
+              <span className="text-muted-foreground text-xs">
+                {column.type}
+              </span>
 
               {/* Handles for connections */}
               <Handle
@@ -104,12 +120,9 @@ const nodeTypes = {
   tableNode: TableNode,
 };
 
-export function SchemaVisualizer({
-  schema,
-  onSchemaChange,
-}: SchemaVisualizerProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+export function SchemaVisualizer({ schema }: SchemaVisualizerProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [showMiniMap, setShowMiniMap] = useState(true);
 
   // Layout algorithm using Dagre
@@ -169,21 +182,27 @@ export function SchemaVisualizer({
             targetHandle: `${column.foreignKey.table}-${column.foreignKey.column}-target`,
             type: "smoothstep",
             animated: true,
-            style: { stroke: "#3b82f6", strokeWidth: 2 },
+            style: {
+              stroke: "hsl(var(--primary))",
+              strokeWidth: 2,
+            },
             markerEnd: {
-              type: "arrowclosed",
-              color: "#3b82f6",
+              type: MarkerType.ArrowClosed,
+              color: "hsl(var(--primary))",
             },
             label: `${column.name} → ${column.foreignKey.column}`,
             labelStyle: { fontSize: 12, fontWeight: "bold" },
-            labelBgStyle: { fill: "white", fillOpacity: 0.8 },
+            labelBgStyle: {
+              fill: "hsl(var(--background))",
+              fillOpacity: 0.8,
+            },
           });
         }
       });
     });
 
     const layouted = getLayoutedElements(newNodes, newEdges);
-    setNodes(layouted.nodes);
+    setNodes(layouted.nodes as Node[]);
     setEdges(layouted.edges);
   }, [schema, getLayoutedElements, setNodes, setEdges]);
 
@@ -214,19 +233,19 @@ export function SchemaVisualizer({
     return (
       <div className="h-[600px] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-            <Plus className="w-8 h-8 text-gray-400" />
+          <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-lg flex items-center justify-center">
+            <Database className="w-8 h-8 text-muted-foreground opacity-50" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            No Schema Available
+          <h3 className="text-lg font-semibold text-foreground mb-2">
+            No Database Schema
           </h3>
-          <p className="text-gray-600 dark:text-gray-300 mb-4">
-            Import data or manually add tables to visualize your database schema
+          <p className="text-muted-foreground mb-4">
+            Import CSV files to visualize your database relationships and
+            structure
           </p>
-          <Button variant="outline">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Table
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            Go to the &quot;Import Data&quot; tab to get started
+          </p>
         </div>
       </div>
     );
@@ -273,14 +292,14 @@ export function SchemaVisualizer({
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
       >
         <Controls position="bottom-right" />
-        <Background color="#aaa" gap={16} />
+        <Background color="hsl(var(--muted-foreground))" gap={16} />
         {showMiniMap && (
           <MiniMap
             position="bottom-left"
             style={{
               height: 120,
               width: 200,
-              border: "1px solid #ccc",
+              border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
             }}
             zoomable
