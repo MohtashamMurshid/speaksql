@@ -1,103 +1,169 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { DatabaseChat } from "@/components/database-chat";
+import { SchemaVisualizer } from "@/components/schema-visualizer";
+import { QueryEditor } from "@/components/query-editor";
+import { DataImporter } from "@/components/data-importer";
+import { Database, MessageSquare, Code, Upload } from "lucide-react";
+
+type Tab = "chat" | "schema" | "query" | "import";
+
+interface TableSchema {
+  name: string;
+  columns: Array<{
+    name: string;
+    type: string;
+    primaryKey?: boolean;
+    foreignKey?: {
+      table: string;
+      column: string;
+    };
+  }>;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [activeTab, setActiveTab] = useState<Tab>("chat");
+  const [databaseSchema, setDatabaseSchema] = useState<TableSchema[]>([
+    // Sample schema for demonstration
+    {
+      name: "users",
+      columns: [
+        { name: "id", type: "INTEGER", primaryKey: true },
+        { name: "name", type: "VARCHAR(255)" },
+        { name: "email", type: "VARCHAR(255)" },
+        { name: "created_at", type: "TIMESTAMP" },
+      ],
+    },
+    {
+      name: "orders",
+      columns: [
+        { name: "id", type: "INTEGER", primaryKey: true },
+        {
+          name: "user_id",
+          type: "INTEGER",
+          foreignKey: { table: "users", column: "id" },
+        },
+        { name: "product_name", type: "VARCHAR(255)" },
+        { name: "amount", type: "DECIMAL(10,2)" },
+        { name: "order_date", type: "TIMESTAMP" },
+      ],
+    },
+  ]);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const tabs = [
+    {
+      id: "chat" as Tab,
+      label: "AI Chat",
+      icon: MessageSquare,
+      description: "Chat with your database in plain English",
+    },
+    {
+      id: "schema" as Tab,
+      label: "Schema Visualizer",
+      icon: Database,
+      description: "Interactive database schema graph",
+    },
+    {
+      id: "query" as Tab,
+      label: "SQL Editor",
+      icon: Code,
+      description: "Execute SQL queries with AI assistance",
+    },
+    {
+      id: "import" as Tab,
+      label: "Import Data",
+      icon: Upload,
+      description: "Import CSV and other data formats",
+    },
+  ];
+
+  const renderActiveTab = () => {
+    switch (activeTab) {
+      case "chat":
+        return <DatabaseChat schema={databaseSchema} />;
+      case "schema":
+        return (
+          <SchemaVisualizer
+            schema={databaseSchema}
+            onSchemaChange={setDatabaseSchema}
+          />
+        );
+      case "query":
+        return <QueryEditor schema={databaseSchema} />;
+      case "import":
+        return (
+          <DataImporter
+            onDataImported={handleDataImport}
+            schema={databaseSchema}
+            onSchemaChange={setDatabaseSchema}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const handleDataImport = (data: any) => {
+    console.log("Data imported:", data);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      <div className="container mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Database className="h-10 w-10 text-blue-600" />
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              SpeakSQL
+            </h1>
+          </div>
+          <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed">
+            Chat with your database in plain English • Visualize schemas
+            interactively • Execute SQL with AI assistance
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Tab Navigation */}
+        <div className="flex flex-wrap justify-center gap-4 mb-8">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <Button
+                key={tab.id}
+                variant={activeTab === tab.id ? "default" : "outline"}
+                size="lg"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-6 py-3 transition-all duration-200 ${
+                  activeTab === tab.id
+                    ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg scale-105"
+                    : "hover:scale-105 hover:shadow-md"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <div className="text-left">
+                  <div className="font-semibold">{tab.label}</div>
+                  <div className="text-xs opacity-80 hidden sm:block">
+                    {tab.description}
+                  </div>
+                </div>
+              </Button>
+            );
+          })}
+        </div>
+
+        {/* Main Content Area */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="p-6">{renderActiveTab()}</div>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center mt-8 text-sm text-gray-500 dark:text-gray-400">
+          Built with Next.js, Vercel AI SDK, React Flow, and shadcn/ui
+        </div>
+      </div>
     </div>
   );
 }
