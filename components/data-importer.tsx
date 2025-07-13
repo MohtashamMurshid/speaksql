@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Upload, FileText, X, Table, Database } from "lucide-react";
+import { Upload, FileText, X, Table, Database, Check } from "lucide-react";
 import { DatabaseConnector } from "./database-connector";
 import { databaseService } from "@/lib/database-service";
 
@@ -48,6 +48,7 @@ export function DataImporter({
   const [importedFiles, setImportedFiles] = useState<ImportedData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [addedFiles, setAddedFiles] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const detectColumnType = (values: string[]): string => {
@@ -202,6 +203,9 @@ export function DataImporter({
       const newSchema = await databaseService.getSchema();
       onSchemaChange(newSchema);
       onDataImported(importedData);
+      
+      // Mark this file as added
+      setAddedFiles(prev => new Set(prev).add(importedData.fileName));
     } catch (error) {
       console.error("Failed to add data to schema:", error);
     }
@@ -300,9 +304,20 @@ export function DataImporter({
                         variant="outline"
                         size="sm"
                         onClick={() => addToSchema(file)}
+                        disabled={addedFiles.has(file.fileName)}
+                        className={addedFiles.has(file.fileName) ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800" : ""}
                       >
-                        <Database className="w-4 h-4 mr-2" />
-                        Add to Schema
+                        {addedFiles.has(file.fileName) ? (
+                          <>
+                            <Check className="w-4 h-4 mr-2 text-green-600" />
+                            Added
+                          </>
+                        ) : (
+                          <>
+                            <Database className="w-4 h-4 mr-2" />
+                            Add to Schema
+                          </>
+                        )}
                       </Button>
                       <Button
                         variant="outline"

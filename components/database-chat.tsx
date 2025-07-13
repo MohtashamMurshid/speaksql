@@ -17,6 +17,7 @@ import {
   Play,
   RefreshCw,
   Database,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -64,6 +65,8 @@ interface SpeechRecognition {
 export function DatabaseChat({ schema }: DatabaseChatProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [copiedSqlIndex, setCopiedSqlIndex] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -87,7 +90,11 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
 
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => {
+        if (scrollAreaRef.current) {
+          scrollAreaRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 100);
     }
   };
 
@@ -138,17 +145,48 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
     }
   };
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboard = async (text: string, messageId: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000); // Reset after 2 seconds
     } catch (err) {
       console.error("Failed to copy text: ", err);
     }
   };
 
   const extractSqlQuery = (content: string) => {
+    // First try to match SQL code blocks with ```sql format
     const sqlMatch = content.match(/```sql\n([\s\S]*?)\n```/);
-    return sqlMatch ? sqlMatch[1] : null;
+    if (sqlMatch && sqlMatch[1]) {
+      return sqlMatch[1].trim();
+    }
+    
+    // Try alternate format with no newline after language declaration
+    const altSqlMatch = content.match(/```sql([\s\S]*?)\n```/);
+    if (altSqlMatch && altSqlMatch[1]) {
+      return altSqlMatch[1].trim();
+    }
+    
+    // If no match found, try to detect SQL patterns
+    const sqlPatterns = [
+      /SELECT[\s\S]*?FROM[\s\S]*?(?:;|$)/i,
+      /INSERT\s+INTO[\s\S]*?VALUES[\s\S]*?(?:;|$)/i,
+      /UPDATE[\s\S]*?SET[\s\S]*?(?:;|$)/i,
+      /DELETE\s+FROM[\s\S]*?(?:;|$)/i,
+      /CREATE\s+TABLE[\s\S]*?(?:;|$)/i,
+      /ALTER\s+TABLE[\s\S]*?(?:;|$)/i,
+      /DROP\s+TABLE[\s\S]*?(?:;|$)/i,
+    ];
+    
+    for (const pattern of sqlPatterns) {
+      const match = content.match(pattern);
+      if (match && match[0]) {
+        return match[0].trim();
+      }
+    }
+    
+    return null;
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -157,9 +195,22 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
   };
 
   return (
-    <div className="flex flex-col h-[700px]">
+    <div className="flex flex-col h-[700px] overflow-hidden">
+      {/* Add animation styles */}
+      <style jsx global>{`
+        @keyframes fadeInOut {
+          0% { opacity: 0; }
+          20% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        .animate-fade-in-out {
+          animation: fadeInOut 2s ease-in-out;
+        }
+      `}</style>
+      
       {/* Header */}
-      <CardHeader className="pb-4">
+      <CardHeader className="pb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-accent rounded-lg">
             <Bot className="h-6 w-6 text-primary" />
@@ -187,7 +238,7 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
 
       {/* Schema Overview */}
       {schema.length > 0 && (
-        <div className="mb-4 p-3 bg-muted rounded-lg mx-6">
+        <div className="mb-4 p-3 bg-muted rounded-lg mx-6 flex-shrink-0">
           <h3 className="text-sm font-medium text-muted-foreground mb-2">
             Available Tables:
           </h3>
@@ -205,8 +256,8 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
       )}
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-6">
-        <div className="space-y-4">
+      <ScrollArea className="flex-1 px-6 overflow-y-auto">
+        <div className="space-y-4 pb-6">
           {messages.length === 0 && (
             <div className="text-center py-8">
               {schema.length > 0 ? (
@@ -291,11 +342,89 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
                       ),
                       code: ({ className, children, ...props }) => {
                         const inline = "inline" in props ? props.inline : false;
+                        const isSql = className?.includes('language-sql');
+                        
+                        // If it's an inline code block
+                        if (inline) {
+                          return (
+                            <code
+                              className={cn(
+                                className,
+                                "bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-mono"
+                              )}
+                              {...props}
+                            >
+                              {children}
+                            </code>
+                          );
+                        }
+                        
+                        // If it's a SQL code block
+                        if (isSql) {
+                          // Generate a unique index for this SQL block
+                          const sqlIndex = `${message.id}-${Math.random().toString(36).substring(2, 9)}`;
+                          const sqlContent = String(children).trim();
+                          
+                          const handleCopy = () => {
+                            navigator.clipboard.writeText(sqlContent);
+                            setCopiedSqlIndex(sqlIndex);
+                            setTimeout(() => setCopiedSqlIndex(null), 2000);
+                          };
+                          
+                          return (
+                            <div className="relative mt-2 mb-4">
+                              <div className="absolute top-0 right-0 bg-blue-500 text-white px-2 py-1 text-xs rounded-bl z-10 flex items-center gap-1">
+                                <span>{copiedSqlIndex === sqlIndex ? "Copied" : "Copy"}</span>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  className="h-5 w-5 p-0 bg-blue-600 hover:bg-blue-700 rounded-full ml-1 flex items-center justify-center"
+                                  onClick={handleCopy}
+                                  title="Copy SQL"
+                                >
+                                  {copiedSqlIndex === sqlIndex ? (
+                                    <Check className="h-2.5 w-2.5 text-white" />
+                                  ) : (
+                                    <Copy className="h-2.5 w-2.5 text-white" />
+                                  )}
+                                </Button>
+                              </div>
+                              <div 
+                                className={cn(
+                                  "cursor-pointer transition-all duration-200",
+                                  copiedSqlIndex === sqlIndex && "ring-2 ring-green-500"
+                                )}
+                                onClick={handleCopy}
+                                title="Click to copy SQL"
+                              >
+                                {copiedSqlIndex === sqlIndex && (
+                                  <div className="absolute inset-0 bg-green-500/10 flex items-center justify-center z-10 rounded-lg">
+                                    <div className="bg-green-100 text-green-800 px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 shadow-lg">
+                                      <Check className="h-4 w-4" />
+                                      Copied to clipboard!
+                                    </div>
+                                  </div>
+                                )}
+                                <code
+                                  className={cn(
+                                    className,
+                                    "block bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto text-sm font-mono border-l-4 border-blue-500 pl-4 mt-6 shadow-md whitespace-pre-wrap"
+                                  )}
+                                  {...props}
+                                >
+                                  {children}
+                                </code>
+                              </div>
+                            </div>
+                          );
+                        }
+                        
+                        // Regular code block
                         return (
                           <code
                             className={cn(
                               className,
-                              !inline && "block bg-muted px-2 py-1 rounded"
+                              "block bg-muted px-2 py-1 rounded"
                             )}
                             {...props}
                           >
@@ -313,9 +442,21 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(message.content)}
+                      onClick={() => copyToClipboard(message.content, message.id)}
+                      disabled={copiedMessageId === message.id}
+                      className="flex items-center gap-1"
                     >
-                      <Copy className="h-3 w-3" />
+                      {copiedMessageId === message.id ? (
+                        <>
+                          <Check className="h-3 w-3 text-green-500" />
+                          <span className="text-xs text-green-500">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" />
+                          <span className="text-xs">Copy</span>
+                        </>
+                      )}
                     </Button>
                     {extractSqlQuery(message.content) && (
                       <Button
@@ -325,9 +466,10 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
                           const query = extractSqlQuery(message.content);
                           if (query) console.log("Execute query:", query);
                         }}
+                        className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200 border border-blue-200 dark:border-blue-800"
                       >
                         <Play className="h-3 w-3" />
-                        Execute
+                        <span className="text-xs">Run Query</span>
                       </Button>
                     )}
                   </div>
@@ -358,14 +500,14 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
       </ScrollArea>
 
       {/* Input Form */}
-      <div className="p-6 border-t border-border">
+      <div className="p-6 border-t border-border flex-shrink-0">
         <form onSubmit={handleFormSubmit} className="flex gap-3">
           <div className="flex-1 relative">
             <Textarea
               value={input}
               onChange={handleInputChange}
               placeholder="Ask me anything about your database..."
-              className="resize-none pr-12"
+              className="resize-none pr-12 max-h-[150px]"
               rows={2}
               disabled={isLoading}
             />
