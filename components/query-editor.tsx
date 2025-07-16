@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -24,6 +24,7 @@ interface TableSchema {
 
 interface QueryEditorProps {
   schema: TableSchema[];
+  activeConnectionId: string | null;
 }
 
 interface QueryResult {
@@ -33,11 +34,55 @@ interface QueryResult {
   executionTime: number;
 }
 
-export function QueryEditor({ schema }: QueryEditorProps) {
+interface DatabaseConnection {
+  id: string;
+  name: string;
+  type: "postgresql" | "mysql" | "sqlite";
+  connected: boolean;
+  config: {
+    host?: string;
+    port?: number;
+    database?: string;
+    username?: string;
+    password?: string;
+    filePath?: string;
+  };
+  error?: string;
+  schema?: {
+    name: string;
+    columns: { name: string }[];
+  }[];
+  sampleData?: {
+    tableName: string;
+    columns: string[];
+    rows: string[][];
+    totalRows: number;
+  }[];
+}
+
+export function QueryEditor({ schema, activeConnectionId }: QueryEditorProps) {
   const [query, setQuery] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeConnection, setActiveConnection] =
+    useState<DatabaseConnection | null>(null);
+
+  // Load active connection from localStorage
+  useEffect(() => {
+    if (activeConnectionId) {
+      const saved = localStorage.getItem("speaksql_connections");
+      if (saved) {
+        const connections: DatabaseConnection[] = JSON.parse(saved);
+        const connection = connections.find(
+          (conn) => conn.id === activeConnectionId
+        );
+        setActiveConnection(connection || null);
+      }
+    } else {
+      setActiveConnection(null);
+    }
+  }, [activeConnectionId]);
 
   // Generate sample queries based on actual schema
   const sampleQueries =
@@ -87,10 +132,35 @@ export function QueryEditor({ schema }: QueryEditorProps) {
     setResult(null);
 
     try {
-      const queryResult = await databaseService.executeQuery(query);
+      let queryResult: QueryResult;
+
+      if (activeConnection && activeConnection.connected) {
+        // Execute query on SQL database via API
+        const response = await fetch("/api/database/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: activeConnection.type,
+            config: activeConnection.config,
+            query: query,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        queryResult = data;
+      } else {
+        // Execute query on CSV data via databaseService
+        queryResult = await databaseService.executeQuery(query);
+      }
+
       setResult(queryResult);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : "Query execution failed");
     } finally {
       setIsExecuting(false);
     }

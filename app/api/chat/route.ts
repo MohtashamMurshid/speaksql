@@ -1,5 +1,6 @@
 import { openai } from "@ai-sdk/openai";
-import { streamText } from "ai";
+import { streamText, tool } from "ai";
+import { z } from "zod";
 
 interface TableColumn {
   name: string;
@@ -14,6 +15,90 @@ interface TableColumn {
 interface TableSchema {
   name: string;
   columns: TableColumn[];
+}
+
+interface DatabaseConnection {
+  id: string;
+  name: string;
+  type: "postgresql" | "mysql" | "sqlite";
+  connected: boolean;
+  config: {
+    host?: string;
+    port?: number;
+    database?: string;
+    username?: string;
+    password?: string;
+    filePath?: string;
+  };
+  error?: string;
+  schema?: {
+    name: string;
+    columns: { name: string }[];
+  }[];
+  sampleData?: {
+    tableName: string;
+    columns: string[];
+    rows: string[][];
+    totalRows: number;
+  }[];
+}
+
+// Tool factory for executing SQL queries
+function createExecuteQueryTool(activeConnection: DatabaseConnection | null) {
+  return tool({
+    description:
+      "Execute a SQL query against the connected database and return the results. Use this when the user asks for data analysis, wants to run a query, or needs to see actual data from the database.",
+    parameters: z.object({
+      query: z.string().describe("The SQL query to execute"),
+      explanation: z
+        .string()
+        .describe("Brief explanation of what this query does"),
+    }),
+    execute: async ({ query, explanation }) => {
+      try {
+        if (!activeConnection || !activeConnection.connected) {
+          throw new Error("No active database connection available");
+        }
+
+        const response = await fetch(
+          `${
+            process.env.NEXTAUTH_URL || "http://localhost:3000"
+          }/api/database/query`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: activeConnection.type,
+              config: activeConnection.config,
+              query: query,
+            }),
+          }
+        );
+
+        const data = await response.json();
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        return {
+          success: true,
+          explanation,
+          columns: data.columns,
+          rows: data.rows,
+          rowCount: data.rowCount,
+          executionTime: data.executionTime,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          explanation,
+          error:
+            error instanceof Error ? error.message : "Query execution failed",
+        };
+      }
+    },
+  });
 }
 
 // Helper function to generate SQL example queries based on schema
@@ -88,7 +173,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { messages, schema } = body;
+    const { messages, schema, activeConnection } = body;
 
     // Validate messages
     if (!Array.isArray(messages)) {
@@ -130,44 +215,74 @@ export async function POST(req: Request) {
     // Generate example queries
     const exampleQueries = generateExampleQueries(schema);
 
+    // Generate sample data description
+    const sampleDataDescription = activeConnection?.sampleData
+      ? activeConnection.sampleData
+          .map(
+            (sample: {
+              tableName: string;
+              columns: string[];
+              rows: string[][];
+              totalRows: number;
+            }) => {
+              const sampleRows = sample.rows
+                .map((row: string[]) => `  ${row.join(" | ")}`)
+                .join("\n");
+              return `Table: ${sample.tableName} (${
+                sample.totalRows
+              } total rows)
+Columns: ${sample.columns.join(", ")}
+Sample data:
+${sampleRows}`;
+            }
+          )
+          .join("\n\n")
+      : "No sample data available.";
+
     // Create a comprehensive system message
     const systemMessage = `You are SpeakSQL, an expert database assistant that helps users interact with their database using natural language. You have deep knowledge of SQL, database design, and data analysis.
 
 ## Current Database Schema:
 ${schemaDescription}
 
+## Sample Data:
+${sampleDataDescription}
+
 ## Example Queries:
 ${exampleQueries}
 
 ## Your Capabilities:
-1. **SQL Query Generation**: Generate accurate, optimized SQL queries based on user requests
+1. **SQL Query Generation & Execution**: Generate and automatically execute SQL queries using the execute_query tool
 2. **Data Analysis**: Help analyze data patterns, relationships, and insights
 3. **Schema Understanding**: Explain table relationships, data types, and constraints
 4. **Query Optimization**: Suggest performance improvements and best practices
 5. **Data Validation**: Help with data quality checks and validation queries
 6. **Reporting**: Create queries for reports, dashboards, and analytics
 
-## Guidelines:
-- Always format SQL queries in code blocks with \`\`\`sql
+## Tool Usage Guidelines:
+- **Use execute_query tool when**: User asks for data analysis, wants to see actual data, needs query results, or requests information that requires running a query
+- **Don't use tools when**: User asks for general help, schema explanations, or theoretical SQL questions
+- **Always explain** what you're about to query before executing it
+
+## Response Guidelines:
+- When executing queries, provide context about what you're searching for
+- Format SQL queries in code blocks with \`\`\`sql when showing them for reference
 - Ensure queries are compatible with the provided schema
 - Use proper SQL syntax and best practices
 - Explain complex queries in simple terms
-- Suggest indexes or optimizations when relevant
-- Ask clarifying questions if the request is ambiguous
 - Be educational and explain the "why" behind your recommendations
 - Handle edge cases and provide error-resistant queries
 
-## Response Format:
-When providing SQL queries:
-1. Brief explanation of what the query does
-2. The SQL query in a code block
-3. Optional: Explanation of key parts or potential optimizations
-4. Optional: Expected output structure
+## Response Format for Query Execution:
+1. Brief explanation of what you'll query and why
+2. Execute the query using the tool
+3. Interpret and explain the results
+4. Provide insights or follow-up suggestions
 
-Remember: You're not just generating queries, you're teaching users to understand their data better.`;
+Remember: You're not just generating queries, you're teaching users to understand their data better while providing real insights from their actual data.`;
 
-    // Call OpenAI with improved configuration
-    const result = await streamText({
+    // Setup parameters for streamText
+    const baseParams = {
       model: openai("gpt-4o-mini"),
       system: systemMessage,
       messages: messages as Parameters<typeof streamText>[0]["messages"], // Type assertion for AI SDK compatibility
@@ -175,7 +290,19 @@ Remember: You're not just generating queries, you're teaching users to understan
       maxTokens: 2000, // Increased for more detailed responses
       frequencyPenalty: 0.1,
       presencePenalty: 0.1,
-    });
+      maxSteps: 10,
+    };
+
+    // Call OpenAI with improved configuration
+    const result =
+      activeConnection && activeConnection.connected
+        ? await streamText({
+            ...baseParams,
+            tools: {
+              execute_query: createExecuteQueryTool(activeConnection),
+            },
+          })
+        : await streamText(baseParams);
 
     return result.toDataStreamResponse();
   } catch (error) {
