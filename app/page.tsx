@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { DatabaseChat } from "@/components/database-chat";
 import { SchemaVisualizer } from "@/components/schema-visualizer";
@@ -25,6 +25,32 @@ interface TableSchema {
   }>;
 }
 
+interface DatabaseConnection {
+  id: string;
+  name: string;
+  type: "postgresql" | "mysql" | "sqlite";
+  connected: boolean;
+  config: {
+    host?: string;
+    port?: number;
+    database?: string;
+    username?: string;
+    password?: string;
+    filePath?: string;
+  };
+  error?: string;
+  schema?: Array<{
+    name: string;
+    columns: Array<{ name: string; type?: string }>;
+  }>;
+  sampleData?: {
+    tableName: string;
+    columns: string[];
+    rows: string[][];
+    totalRows: number;
+  }[];
+}
+
 interface ImportedData {
   fileName: string;
   tableName: string;
@@ -40,6 +66,9 @@ interface ImportedData {
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("import");
   const [databaseSchema, setDatabaseSchema] = useState<TableSchema[]>([]);
+  const [activeConnection, setActiveConnection] =
+    useState<DatabaseConnection | null>(null);
+  const [connections, setConnections] = useState<DatabaseConnection[]>([]);
 
   // Initialize database service
   useEffect(() => {
@@ -56,6 +85,52 @@ export default function Home() {
 
     initializeDatabase();
   }, []);
+
+  // Handle connection changes from DatabaseConnector
+  const handleConnectionChange = useCallback(
+    (
+      updatedConnections: DatabaseConnection[],
+      activeConnectionId: string | null
+    ) => {
+      setConnections(updatedConnections);
+
+      if (activeConnectionId) {
+        const activeConn = updatedConnections.find(
+          (conn) => conn.id === activeConnectionId
+        );
+        setActiveConnection(activeConn || null);
+
+        // If the connection has a schema, use it; otherwise keep CSV schema
+        if (activeConn?.schema) {
+          // Convert the API schema format to our TableSchema format
+          const convertedSchema: TableSchema[] = activeConn.schema.map(
+            (table: {
+              name: string;
+              columns: Array<{ name: string; type?: string }>;
+            }) => ({
+              name: table.name,
+              columns: table.columns.map(
+                (col: { name: string; type?: string }) => ({
+                  name: col.name,
+                  type: col.type || "TEXT",
+                  primaryKey: false, // API doesn't provide this info in current format
+                })
+              ),
+            })
+          );
+          setDatabaseSchema(convertedSchema);
+        }
+      } else {
+        setActiveConnection(null);
+        // Reset to CSV schema when no SQL connection is active
+        databaseService
+          .getSchema()
+          .then(setDatabaseSchema)
+          .catch(console.error);
+      }
+    },
+    []
+  );
 
   const tabs = [
     {
@@ -87,7 +162,12 @@ export default function Home() {
   const renderActiveTab = () => {
     switch (activeTab) {
       case "chat":
-        return <DatabaseChat schema={databaseSchema} />;
+        return (
+          <DatabaseChat
+            schema={databaseSchema}
+            activeConnection={activeConnection || undefined}
+          />
+        );
       case "schema":
         return (
           <SchemaVisualizer
@@ -96,13 +176,19 @@ export default function Home() {
           />
         );
       case "query":
-        return <QueryEditor schema={databaseSchema} />;
+        return (
+          <QueryEditor
+            schema={databaseSchema}
+            activeConnectionId={activeConnection?.id || null}
+          />
+        );
       case "import":
         return (
           <DataImporter
             onDataImported={handleDataImport}
             schema={databaseSchema}
             onSchemaChange={setDatabaseSchema}
+            onConnectionChange={handleConnectionChange}
           />
         );
       default:
@@ -112,6 +198,8 @@ export default function Home() {
 
   const handleDataImport = (data: ImportedData) => {
     console.log("Data imported:", data);
+    // Log connections count for reference
+    console.log(`Active connections: ${connections.length}`);
   };
 
   return (
@@ -133,6 +221,53 @@ export default function Home() {
             <ModeToggle />
           </div>
         </div>
+
+        {/* Global Database Status Bar */}
+        {activeConnection && (
+          <div className="mb-6 p-4 bg-muted/50 rounded-lg border border-border">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-primary" />
+                  <span className="font-medium text-foreground">
+                    Connected Database: {activeConnection.name}
+                  </span>
+                  {activeConnection.connected ? (
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-sm text-green-600 dark:text-green-400 font-medium">
+                        Online
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                      <span className="text-sm text-red-600 dark:text-red-400 font-medium">
+                        Disconnected
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {activeConnection.type === "sqlite"
+                    ? activeConnection.config.filePath
+                    : `${activeConnection.config.host}:${activeConnection.config.port}/${activeConnection.config.database}`}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {databaseSchema.length > 0 && (
+                  <div className="text-sm text-muted-foreground">
+                    {databaseSchema.length} table
+                    {databaseSchema.length !== 1 ? "s" : ""} loaded
+                  </div>
+                )}
+                <div className="text-xs px-2 py-1 bg-accent rounded">
+                  {activeConnection.type.toUpperCase()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="flex flex-wrap justify-center gap-4 mb-8">

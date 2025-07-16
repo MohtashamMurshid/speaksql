@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import {
   CheckCircle,
   XCircle,
   Settings,
+  RefreshCw,
 } from "lucide-react";
 
 type DatabaseType = "postgresql" | "mysql" | "sqlite";
@@ -42,16 +43,33 @@ interface DatabaseConnection {
     password?: string;
     filePath?: string;
   };
+  error?: string;
+  schema?: {
+    name: string;
+    columns: { name: string }[];
+  }[];
+  sampleData?: {
+    tableName: string;
+    columns: string[];
+    rows: string[][];
+    totalRows: number;
+  }[];
 }
 
 interface DatabaseConnectorProps {
-  onConnectionChange?: (connections: DatabaseConnection[]) => void;
+  onConnectionChange?: (
+    connections: DatabaseConnection[],
+    activeConnectionId: string | null
+  ) => void;
 }
 
 export function DatabaseConnector({
   onConnectionChange,
 }: DatabaseConnectorProps) {
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);
+  const [activeConnectionId, setActiveConnectionId] = useState<string | null>(
+    null
+  );
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newConnection, setNewConnection] = useState<
     Partial<DatabaseConnection>
@@ -80,7 +98,7 @@ export function DatabaseConnector({
 
     const updatedConnections = [...connections, connection];
     setConnections(updatedConnections);
-    onConnectionChange?.(updatedConnections);
+    onConnectionChange?.(updatedConnections, null); // No active connection on add
 
     // Reset form
     setNewConnection({
@@ -100,16 +118,189 @@ export function DatabaseConnector({
   const handleRemoveConnection = (id: string) => {
     const updatedConnections = connections.filter((conn) => conn.id !== id);
     setConnections(updatedConnections);
-    onConnectionChange?.(updatedConnections);
+    onConnectionChange?.(updatedConnections, null); // No active connection on remove
   };
 
-  const handleTestConnection = async (id: string) => {
-    // Simulate connection test
-    setConnections((prev) =>
-      prev.map((conn) =>
-        conn.id === id ? { ...conn, connected: !conn.connected } : conn
-      )
+  // Persist connections and activeConnectionId
+  useEffect(() => {
+    localStorage.setItem("speaksql_connections", JSON.stringify(connections));
+    localStorage.setItem(
+      "speaksql_activeConnectionId",
+      activeConnectionId || ""
     );
+  }, [connections, activeConnectionId]);
+
+  // Call onConnectionChange when connections or activeConnectionId changes
+  useEffect(() => {
+    onConnectionChange?.(connections, activeConnectionId);
+  }, [connections, activeConnectionId]); // Removed onConnectionChange from deps to prevent infinite loop
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("speaksql_connections");
+    if (saved) setConnections(JSON.parse(saved));
+    const savedActive = localStorage.getItem("speaksql_activeConnectionId");
+    if (savedActive) setActiveConnectionId(savedActive || null);
+  }, []);
+
+  // Set active connection when connecting
+  const handleTestConnection = async (id: string) => {
+    const connection = connections.find((conn) => conn.id === id);
+    if (!connection) return;
+    try {
+      const res = await fetch("/api/database/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: connection.type,
+          config: connection.config,
+        }),
+      });
+      const data = await res.json();
+      if (data.connected) {
+        // Fetch schema
+        const schemaRes = await fetch("/api/database/schema", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: connection.type,
+            config: connection.config,
+          }),
+        });
+        const schemaData = await schemaRes.json();
+
+        console.log("Fetched schema data:", schemaData);
+
+        if (schemaData.error) {
+          throw new Error(schemaData.error);
+        }
+
+        // Fetch sample data for better context
+        let sampleData = null;
+        try {
+          const sampleRes = await fetch("/api/database/sample-data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: connection.type,
+              config: connection.config,
+              tables: schemaData.schema.map(
+                (table: { name: string }) => table.name
+              ),
+            }),
+          });
+          const sampleDataResult = await sampleRes.json();
+          sampleData = sampleDataResult.sampleData;
+        } catch (error) {
+          console.warn("Failed to fetch sample data:", error);
+        }
+
+        setConnections((prev) =>
+          prev.map((conn) =>
+            conn.id === id
+              ? {
+                  ...conn,
+                  connected: true,
+                  error: undefined,
+                  schema: schemaData.schema,
+                  sampleData: sampleData,
+                }
+              : conn
+          )
+        );
+        setActiveConnectionId(id);
+      } else {
+        setConnections((prev) =>
+          prev.map((conn) =>
+            conn.id === id
+              ? {
+                  ...conn,
+                  connected: false,
+                  error: data.error,
+                  schema: undefined,
+                  sampleData: undefined,
+                }
+              : conn
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Connection test failed:", err);
+      setConnections((prev) =>
+        prev.map((conn) =>
+          conn.id === id
+            ? {
+                ...conn,
+                connected: false,
+                error: err instanceof Error ? err.message : "Connection failed",
+                schema: undefined,
+                sampleData: undefined,
+              }
+            : conn
+        )
+      );
+    }
+  };
+
+  const refreshSchema = async (id: string) => {
+    const connection = connections.find((conn) => conn.id === id);
+    if (!connection || !connection.connected) return;
+
+    try {
+      // Fetch schema with cache busting
+      const schemaRes = await fetch("/api/database/schema", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
+        body: JSON.stringify({
+          type: connection.type,
+          config: connection.config,
+        }),
+      });
+      const schemaData = await schemaRes.json();
+
+      console.log("Refreshed schema data:", schemaData);
+
+      if (schemaData.error) {
+        throw new Error(schemaData.error);
+      }
+
+      // Fetch sample data for better context
+      let sampleData = null;
+      try {
+        const sampleRes = await fetch("/api/database/sample-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: connection.type,
+            config: connection.config,
+            tables: schemaData.schema.map(
+              (table: { name: string }) => table.name
+            ),
+          }),
+        });
+        const sampleDataResult = await sampleRes.json();
+        sampleData = sampleDataResult.sampleData;
+      } catch (error) {
+        console.warn("Failed to fetch sample data:", error);
+      }
+
+      setConnections((prev) =>
+        prev.map((conn) =>
+          conn.id === id
+            ? {
+                ...conn,
+                schema: schemaData.schema,
+                sampleData: sampleData,
+              }
+            : conn
+        )
+      );
+    } catch (err) {
+      console.error("Schema refresh failed:", err);
+    }
   };
 
   const getDefaultPort = (type: DatabaseType): number => {
@@ -357,6 +548,41 @@ export function DatabaseConnector({
                           ? connection.config.filePath
                           : `${connection.config.host}:${connection.config.port}/${connection.config.database}`}
                       </p>
+                      {connection.error && (
+                        <p className="text-xs text-red-500 mt-1">
+                          {connection.error}
+                        </p>
+                      )}
+                      {connection.schema && connection.schema.length > 0 && (
+                        <div className="mt-2 text-xs">
+                          <strong>Tables:</strong>
+                          <ul className="ml-2 list-disc">
+                            {connection.schema.map(
+                              (table: {
+                                name: string;
+                                columns: { name: string }[];
+                              }) => (
+                                <li key={table.name}>
+                                  <span className="font-semibold">
+                                    {table.name}
+                                  </span>
+                                  {table.columns &&
+                                    table.columns.length > 0 && (
+                                      <span>
+                                        :{" "}
+                                        {table.columns
+                                          .map(
+                                            (col: { name: string }) => col.name
+                                          )
+                                          .join(", ")}
+                                      </span>
+                                    )}
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -369,6 +595,16 @@ export function DatabaseConnector({
                       <Settings className="w-4 h-4 mr-1" />
                       {connection.connected ? "Disconnect" : "Connect"}
                     </Button>
+                    {connection.connected && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => refreshSchema(connection.id)}
+                        title="Refresh schema"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -399,17 +635,6 @@ export function DatabaseConnector({
           </CardContent>
         </Card>
       )}
-
-      {/* Info Note */}
-      <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950">
-        <CardContent className="p-4">
-          <p className="text-sm text-yellow-800 dark:text-yellow-200">
-            <strong>Note:</strong> Database connections require a backend API to
-            be implemented. Currently, only CSV imports work fully. External
-            database support coming soon!
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }

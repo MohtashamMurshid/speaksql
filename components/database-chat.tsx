@@ -1,27 +1,24 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CardHeader } from "@/components/ui/card";
 import {
-  Mic,
-  MicOff,
   Send,
   Bot,
   User,
   Loader2,
-  Copy,
   Play,
   RefreshCw,
   Database,
-  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Badge } from "@/components/ui/badge";
 
 interface TableSchema {
   name: string;
@@ -36,38 +33,48 @@ interface TableSchema {
   }>;
 }
 
+interface DatabaseConnection {
+  id: string;
+  name: string;
+  type: "postgresql" | "mysql" | "sqlite";
+  connected: boolean;
+  config: {
+    host?: string;
+    port?: number;
+    database?: string;
+    username?: string;
+    password?: string;
+    filePath?: string;
+  };
+  error?: string;
+  schema?: {
+    name: string;
+    columns: { name: string }[];
+  }[];
+  sampleData?: {
+    tableName: string;
+    columns: string[];
+    rows: string[][];
+    totalRows: number;
+  }[];
+}
+
 interface DatabaseChatProps {
   schema: TableSchema[];
+  activeConnection?: DatabaseConnection;
 }
 
-interface SpeechRecognitionEvent {
-  results: Array<Array<{ transcript: string }>>;
+interface QueryResult {
+  columns: string[];
+  rows: Record<string, string>[];
+  rowCount: number;
+  executionTime: number;
 }
 
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
-}
-
-interface SpeechRecognition {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: (event: SpeechRecognitionEvent) => void;
-  onerror: () => void;
-  onend: () => void;
-  start: () => void;
-  stop: () => void;
-}
-
-export function DatabaseChat({ schema }: DatabaseChatProps) {
-  const [isListening, setIsListening] = useState(false);
-  const [isSupported, setIsSupported] = useState(false);
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const [copiedSqlIndex, setCopiedSqlIndex] = useState<string | null>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -76,12 +83,12 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
     handleInputChange,
     handleSubmit,
     isLoading,
-    setInput,
     reload,
   } = useChat({
     api: "/api/chat",
     body: {
       schema: schema,
+      activeConnection: activeConnection,
     },
     onFinish: () => {
       scrollToBottom();
@@ -102,73 +109,17 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize Speech Recognition
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition =
-        window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        setIsSupported(true);
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = false;
-        recognitionRef.current.lang = "en-US";
-
-        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
-          const transcript = event.results[0][0].transcript;
-          setInput(transcript);
-          setIsListening(false);
-        };
-
-        recognitionRef.current.onerror = () => {
-          setIsListening(false);
-        };
-
-        recognitionRef.current.onend = () => {
-          setIsListening(false);
-        };
-      }
-    }
-  }, [setInput]);
-
-  const startListening = () => {
-    if (recognitionRef.current && !isListening) {
-      setIsListening(true);
-      recognitionRef.current.start();
-    }
-  };
-
-  const stopListening = () => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-  };
-
-  const copyToClipboard = async (text: string, messageId: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedMessageId(messageId);
-      setTimeout(() => setCopiedMessageId(null), 2000); // Reset after 2 seconds
-    } catch (err) {
-      console.error("Failed to copy text: ", err);
-    }
-  };
-
   const extractSqlQuery = (content: string) => {
-    // First try to match SQL code blocks with ```sql format
     const sqlMatch = content.match(/```sql\n([\s\S]*?)\n```/);
     if (sqlMatch && sqlMatch[1]) {
       return sqlMatch[1].trim();
     }
-    
-    // Try alternate format with no newline after language declaration
+
     const altSqlMatch = content.match(/```sql([\s\S]*?)\n```/);
     if (altSqlMatch && altSqlMatch[1]) {
       return altSqlMatch[1].trim();
     }
-    
-    // If no match found, try to detect SQL patterns
+
     const sqlPatterns = [
       /SELECT[\s\S]*?FROM[\s\S]*?(?:;|$)/i,
       /INSERT\s+INTO[\s\S]*?VALUES[\s\S]*?(?:;|$)/i,
@@ -178,14 +129,14 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
       /ALTER\s+TABLE[\s\S]*?(?:;|$)/i,
       /DROP\s+TABLE[\s\S]*?(?:;|$)/i,
     ];
-    
+
     for (const pattern of sqlPatterns) {
       const match = content.match(pattern);
       if (match && match[0]) {
         return match[0].trim();
       }
     }
-    
+
     return null;
   };
 
@@ -194,21 +145,136 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
     handleSubmit(e);
   };
 
+  const executeQuery = async (query: string) => {
+    if (!activeConnection) {
+      setQueryError("No active database connection");
+      return;
+    }
+
+    setIsExecuting(true);
+    setQueryError(null);
+    setQueryResults(null);
+
+    try {
+      const response = await fetch("/api/database/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: activeConnection.type,
+          config: activeConnection.config,
+          query: query,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        setQueryError(data.error);
+      } else {
+        setQueryResults(data.results);
+      }
+    } catch (err) {
+      setQueryError(
+        err instanceof Error ? err.message : "Failed to execute query"
+      );
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const renderQueryResults = () => {
+    if (!queryResults) return null;
+
+    return (
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full divide-y divide-border">
+          <thead>
+            <tr>
+              {queryResults.columns.map((column) => (
+                <th
+                  key={column}
+                  className="px-4 py-2 text-left text-sm font-medium text-muted-foreground bg-muted"
+                >
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {queryResults.rows.map((row, i) => (
+              <tr key={i}>
+                {queryResults.columns.map((column, j) => (
+                  <td key={j} className="px-4 py-2 text-sm whitespace-nowrap">
+                    {row[column]?.toString() || ""}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-sm text-muted-foreground mt-2">
+          {queryResults.rowCount} rows returned
+        </p>
+      </div>
+    );
+  };
+
+  const renderMessages = () => {
+    return messages.map((message) => (
+      <div
+        key={message.id}
+        className={cn(
+          "flex gap-3 p-4 rounded-lg",
+          message.role === "assistant" ? "bg-muted mr-8" : "bg-primary/10 ml-8"
+        )}
+      >
+        <div className="flex-shrink-0">
+          <div className="p-2 bg-accent rounded-lg">
+            {message.role === "assistant" ? (
+              <Bot className="h-4 w-4 text-accent-foreground" />
+            ) : (
+              <User className="h-4 w-4 text-accent-foreground" />
+            )}
+          </div>
+        </div>
+        <div className="flex-1 space-y-2">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {message.content}
+          </ReactMarkdown>
+
+          {message.role === "assistant" && extractSqlQuery(message.content) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const query = extractSqlQuery(message.content);
+                if (query) executeQuery(query);
+              }}
+              className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200 border border-blue-200 dark:border-blue-800"
+              disabled={isExecuting || !activeConnection?.connected}
+            >
+              {isExecuting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Play className="h-3 w-3" />
+              )}
+              <span className="text-xs">
+                {isExecuting ? "Running..." : "Run Query"}
+              </span>
+            </Button>
+          )}
+
+          {queryResults && renderQueryResults()}
+          {queryError && (
+            <p className="text-sm text-red-500 mt-2">{queryError}</p>
+          )}
+        </div>
+      </div>
+    ));
+  };
+
   return (
     <div className="flex flex-col h-[700px] overflow-hidden">
-      {/* Add animation styles */}
-      <style jsx global>{`
-        @keyframes fadeInOut {
-          0% { opacity: 0; }
-          20% { opacity: 1; }
-          80% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-        .animate-fade-in-out {
-          animation: fadeInOut 2s ease-in-out;
-        }
-      `}</style>
-      
       {/* Header */}
       <CardHeader className="pb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -235,6 +301,30 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
           </div>
         </div>
       </CardHeader>
+
+      {/* Connection Status */}
+      {activeConnection && (
+        <div className="mb-4 p-3 bg-muted rounded-lg mx-6 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">
+              Connected to: {activeConnection.name}
+            </span>
+            {activeConnection.connected ? (
+              <Badge
+                variant="secondary"
+                className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+              >
+                Connected
+              </Badge>
+            ) : (
+              <Badge variant="destructive" className="text-xs">
+                Disconnected
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Schema Overview */}
       {schema.length > 0 && (
@@ -291,13 +381,13 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
                     No Data Available
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    Import CSV files to start chatting with your data
+                    Connect to a database or import CSV files to start chatting
                   </p>
                   <div className="max-w-md mx-auto">
                     <p className="text-sm text-muted-foreground">
-                      Go to the &quot;Import Data&quot; tab to upload your CSV
-                      files, then return here to ask questions about your data
-                      in natural language.
+                      Go to the &quot;Database Connections&quot; tab to connect
+                      to your database, or use the &quot;Import Data&quot; tab
+                      to upload CSV files.
                     </p>
                   </div>
                 </>
@@ -305,178 +395,7 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
             </div>
           )}
 
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={cn(
-                "flex gap-3 p-4 rounded-lg",
-                message.role === "user" ? "bg-secondary ml-8" : "bg-muted mr-8"
-              )}
-            >
-              <div className="flex-shrink-0">
-                {message.role === "user" ? (
-                  <div className="p-2 bg-primary rounded-lg">
-                    <User className="h-4 w-4 text-primary-foreground" />
-                  </div>
-                ) : (
-                  <div className="p-2 bg-accent rounded-lg">
-                    <Bot className="h-4 w-4 text-accent-foreground" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium">
-                    {message.role === "user" ? "You" : "AI Assistant"}
-                  </span>
-                </div>
-                <div className="prose prose-sm max-w-none text-foreground">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      pre: ({ ...props }) => (
-                        <pre
-                          className="whitespace-pre-wrap font-sans"
-                          {...props}
-                        />
-                      ),
-                      code: ({ className, children, ...props }) => {
-                        const inline = "inline" in props ? props.inline : false;
-                        const isSql = className?.includes('language-sql');
-                        
-                        // If it's an inline code block
-                        if (inline) {
-                          return (
-                            <code
-                              className={cn(
-                                className,
-                                "bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-mono"
-                              )}
-                              {...props}
-                            >
-                              {children}
-                            </code>
-                          );
-                        }
-                        
-                        // If it's a SQL code block
-                        if (isSql) {
-                          // Generate a unique index for this SQL block
-                          const sqlIndex = `${message.id}-${Math.random().toString(36).substring(2, 9)}`;
-                          const sqlContent = String(children).trim();
-                          
-                          const handleCopy = () => {
-                            navigator.clipboard.writeText(sqlContent);
-                            setCopiedSqlIndex(sqlIndex);
-                            setTimeout(() => setCopiedSqlIndex(null), 2000);
-                          };
-                          
-                          return (
-                            <div className="relative mt-2 mb-4">
-                              <div className="absolute top-0 right-0 bg-blue-500 text-white px-2 py-1 text-xs rounded-bl z-10 flex items-center gap-1">
-                                <span>{copiedSqlIndex === sqlIndex ? "Copied" : "Copy"}</span>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  className="h-5 w-5 p-0 bg-blue-600 hover:bg-blue-700 rounded-full ml-1 flex items-center justify-center"
-                                  onClick={handleCopy}
-                                  title="Copy SQL"
-                                >
-                                  {copiedSqlIndex === sqlIndex ? (
-                                    <Check className="h-2.5 w-2.5 text-white" />
-                                  ) : (
-                                    <Copy className="h-2.5 w-2.5 text-white" />
-                                  )}
-                                </Button>
-                              </div>
-                              <div 
-                                className={cn(
-                                  "cursor-pointer transition-all duration-200",
-                                  copiedSqlIndex === sqlIndex && "ring-2 ring-green-500"
-                                )}
-                                onClick={handleCopy}
-                                title="Click to copy SQL"
-                              >
-                                {copiedSqlIndex === sqlIndex && (
-                                  <div className="absolute inset-0 bg-green-500/10 flex items-center justify-center z-10 rounded-lg">
-                                    <div className="bg-green-100 text-green-800 px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 shadow-lg">
-                                      <Check className="h-4 w-4" />
-                                      Copied to clipboard!
-                                    </div>
-                                  </div>
-                                )}
-                                <code
-                                  className={cn(
-                                    className,
-                                    "block bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto text-sm font-mono border-l-4 border-blue-500 pl-4 mt-6 shadow-md whitespace-pre-wrap"
-                                  )}
-                                  {...props}
-                                >
-                                  {children}
-                                </code>
-                              </div>
-                            </div>
-                          );
-                        }
-                        
-                        // Regular code block
-                        return (
-                          <code
-                            className={cn(
-                              className,
-                              "block bg-muted px-2 py-1 rounded"
-                            )}
-                            {...props}
-                          >
-                            {children}
-                          </code>
-                        );
-                      },
-                    }}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
-                </div>
-                {message.role === "assistant" && (
-                  <div className="flex gap-2 mt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyToClipboard(message.content, message.id)}
-                      disabled={copiedMessageId === message.id}
-                      className="flex items-center gap-1"
-                    >
-                      {copiedMessageId === message.id ? (
-                        <>
-                          <Check className="h-3 w-3 text-green-500" />
-                          <span className="text-xs text-green-500">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3 w-3" />
-                          <span className="text-xs">Copy</span>
-                        </>
-                      )}
-                    </Button>
-                    {extractSqlQuery(message.content) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const query = extractSqlQuery(message.content);
-                          if (query) console.log("Execute query:", query);
-                        }}
-                        className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200 border border-blue-200 dark:border-blue-800"
-                      >
-                        <Play className="h-3 w-3" />
-                        <span className="text-xs">Run Query</span>
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+          {renderMessages()}
 
           {isLoading && (
             <div className="flex gap-3 p-4 rounded-lg bg-muted mr-8">
@@ -502,41 +421,30 @@ export function DatabaseChat({ schema }: DatabaseChatProps) {
       {/* Input Form */}
       <div className="p-6 border-t border-border flex-shrink-0">
         <form onSubmit={handleFormSubmit} className="flex gap-3">
-          <div className="flex-1 relative">
+          <div className="flex-1">
             <Textarea
               value={input}
               onChange={handleInputChange}
-              placeholder="Ask me anything about your database..."
-              className="resize-none pr-12 max-h-[150px]"
+              placeholder={
+                activeConnection?.connected
+                  ? "Ask me anything about your database..."
+                  : "Connect to a database to start chatting"
+              }
+              className="resize-none max-h-[150px]"
               rows={2}
-              disabled={isLoading}
+              disabled={isLoading || !activeConnection?.connected}
             />
-            {isSupported && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="absolute right-2 top-2"
-                onClick={isListening ? stopListening : startListening}
-                disabled={isLoading}
-              >
-                {isListening ? (
-                  <MicOff className="h-4 w-4 text-destructive" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
-              </Button>
-            )}
           </div>
-          <Button type="submit" disabled={!input.trim() || isLoading} size="lg">
+          <Button
+            type="submit"
+            disabled={
+              !input.trim() || isLoading || !activeConnection?.connected
+            }
+            size="lg"
+          >
             <Send className="h-4 w-4" />
           </Button>
         </form>
-        {isListening && (
-          <p className="text-sm text-primary mt-2 text-center">
-            🎤 Listening... Speak your question
-          </p>
-        )}
       </div>
     </div>
   );

@@ -25,6 +25,10 @@ interface DataImporterProps {
   onDataImported: (data: ImportedData) => void;
   schema: TableSchema[];
   onSchemaChange: (schema: TableSchema[]) => void;
+  onConnectionChange?: (
+    connections: DatabaseConnection[],
+    activeConnectionId: string | null
+  ) => void;
 }
 
 interface ImportedData {
@@ -40,10 +44,37 @@ interface ImportedData {
   fullData?: string[][]; // Optional full CSV data
 }
 
+interface DatabaseConnection {
+  id: string;
+  name: string;
+  type: "postgresql" | "mysql" | "sqlite";
+  connected: boolean;
+  config: {
+    host?: string;
+    port?: number;
+    database?: string;
+    username?: string;
+    password?: string;
+    filePath?: string;
+  };
+  error?: string;
+  schema?: {
+    name: string;
+    columns: { name: string }[];
+  }[];
+  sampleData?: {
+    tableName: string;
+    columns: string[];
+    rows: string[][];
+    totalRows: number;
+  }[];
+}
+
 export function DataImporter({
   onDataImported,
   schema,
   onSchemaChange,
+  onConnectionChange,
 }: DataImporterProps) {
   const [importedFiles, setImportedFiles] = useState<ImportedData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -203,9 +234,9 @@ export function DataImporter({
       const newSchema = await databaseService.getSchema();
       onSchemaChange(newSchema);
       onDataImported(importedData);
-      
+
       // Mark this file as added
-      setAddedFiles(prev => new Set(prev).add(importedData.fileName));
+      setAddedFiles((prev) => new Set(prev).add(importedData.fileName));
     } catch (error) {
       console.error("Failed to add data to schema:", error);
     }
@@ -227,7 +258,7 @@ export function DataImporter({
         </p>
       </div>
       {/* Database Connections */}
-      <DatabaseConnector />
+      <DatabaseConnector onConnectionChange={onConnectionChange} />
       {/* CSV Import Section */}
       <div className="border-t pt-8">
         <div className="text-center mb-6">
@@ -305,7 +336,11 @@ export function DataImporter({
                         size="sm"
                         onClick={() => addToSchema(file)}
                         disabled={addedFiles.has(file.fileName)}
-                        className={addedFiles.has(file.fileName) ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800" : ""}
+                        className={
+                          addedFiles.has(file.fileName)
+                            ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800"
+                            : ""
+                        }
                       >
                         {addedFiles.has(file.fileName) ? (
                           <>
