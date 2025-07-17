@@ -71,10 +71,23 @@ interface QueryResult {
   executionTime: number;
 }
 
+// --- Tool Call Message Type ---
+interface ToolCallMessage {
+  id: string;
+  role: "tool";
+  toolType: string;
+  status: "pending" | "success" | "error";
+  input: string;
+  output?: QueryResult;
+  error?: string;
+}
+
 export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
   const [isExecuting, setIsExecuting] = useState(false);
-  const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
-  const [queryError, setQueryError] = useState<string | null>(null);
+  // Remove old queryResults/queryError state
+  // const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
+  // const [queryError, setQueryError] = useState<string | null>(null);
+  const [toolMessages, setToolMessages] = useState<ToolCallMessage[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -145,16 +158,34 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
     handleSubmit(e);
   };
 
+  // --- Tool Call Execution ---
   const executeQuery = async (query: string) => {
     if (!activeConnection) {
-      setQueryError("No active database connection");
+      // Add error tool message
+      const errorMsg: ToolCallMessage = {
+        id: `tool-${Date.now()}`,
+        role: "tool",
+        toolType: "sql-query",
+        status: "error",
+        input: query,
+        error: "No active database connection",
+      };
+      setToolMessages((prev) => [...prev, errorMsg]);
       return;
     }
-
+    const toolMsgId = `tool-${Date.now()}`;
+    // Add pending tool message
+    setToolMessages((prev) => [
+      ...prev,
+      {
+        id: toolMsgId,
+        role: "tool",
+        toolType: "sql-query",
+        status: "pending",
+        input: query,
+      },
+    ]);
     setIsExecuting(true);
-    setQueryError(null);
-    setQueryResults(null);
-
     try {
       const response = await fetch("/api/database/query", {
         method: "POST",
@@ -165,112 +196,211 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
           query: query,
         }),
       });
-
       const data = await response.json();
-
       if (data.error) {
-        setQueryError(data.error);
+        setToolMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === toolMsgId
+              ? { ...msg, status: "error", error: data.error }
+              : msg
+          )
+        );
       } else {
-        setQueryResults(data.results);
+        setToolMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === toolMsgId
+              ? { ...msg, status: "success", output: data.results }
+              : msg
+          )
+        );
       }
     } catch (err) {
-      setQueryError(
-        err instanceof Error ? err.message : "Failed to execute query"
+      setToolMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === toolMsgId
+            ? {
+                ...msg,
+                status: "error",
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : "Failed to execute query",
+              }
+            : msg
+        )
       );
     } finally {
       setIsExecuting(false);
     }
   };
 
-  const renderQueryResults = () => {
-    if (!queryResults) return null;
-
+  // --- Tool Call Message Renderer ---
+  const renderToolCallMessage = (msg: ToolCallMessage) => {
     return (
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full divide-y divide-border">
-          <thead>
-            <tr>
-              {queryResults.columns.map((column) => (
-                <th
-                  key={column}
-                  className="px-4 py-2 text-left text-sm font-medium text-muted-foreground bg-muted"
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {queryResults.rows.map((row, i) => (
-              <tr key={i}>
-                {queryResults.columns.map((column, j) => (
-                  <td key={j} className="px-4 py-2 text-sm whitespace-nowrap">
-                    {row[column]?.toString() || ""}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="text-sm text-muted-foreground mt-2">
-          {queryResults.rowCount} rows returned
-        </p>
+      <div
+        key={msg.id}
+        className={cn(
+          "flex gap-3 p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 mr-8 border border-yellow-200 dark:border-yellow-800"
+        )}
+      >
+        <div className="flex-shrink-0">
+          <div className="p-2 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+            <Play className="h-4 w-4 text-yellow-700 dark:text-yellow-200" />
+          </div>
+        </div>
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-yellow-800 dark:text-yellow-200">
+              Tool Call: {msg.toolType}
+            </span>
+            <span className="text-xs">
+              {msg.status === "pending" && (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin inline-block mr-1" />
+                  Running...
+                </>
+              )}
+              {msg.status === "success" && (
+                <span className="text-green-700 dark:text-green-300">
+                  Success
+                </span>
+              )}
+              {msg.status === "error" && (
+                <span className="text-red-700 dark:text-red-300">Error</span>
+              )}
+            </span>
+          </div>
+          <div>
+            <span className="text-xs text-muted-foreground">Input:</span>
+            <pre className="bg-muted rounded p-2 text-xs mt-1 overflow-x-auto">
+              {msg.input}
+            </pre>
+          </div>
+          {msg.status === "success" &&
+            msg.output &&
+            Array.isArray(msg.output.columns) &&
+            Array.isArray(msg.output.rows) && (
+              <div>
+                <span className="text-xs text-muted-foreground">Output:</span>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="min-w-full divide-y divide-border">
+                    <thead>
+                      <tr>
+                        {msg.output.columns.map((column) => (
+                          <th
+                            key={column}
+                            className="px-4 py-2 text-left text-xs font-medium text-muted-foreground bg-muted"
+                          >
+                            {column}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {msg.output.rows.map((row, i) => (
+                        <tr key={i}>
+                          {msg.output?.columns.map((column, j) => (
+                            <td
+                              key={j}
+                              className="px-4 py-2 text-xs whitespace-nowrap"
+                            >
+                              {row[column]?.toString() || ""}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {msg.output?.rowCount} rows returned
+                  </p>
+                </div>
+              </div>
+            )}
+          {msg.status === "error" && msg.error && (
+            <p className="text-xs text-red-500 mt-2">{msg.error}</p>
+          )}
+        </div>
       </div>
     );
   };
 
+  // --- Render Messages (including tool calls) ---
   const renderMessages = () => {
-    return messages.map((message) => (
-      <div
-        key={message.id}
-        className={cn(
-          "flex gap-3 p-4 rounded-lg",
-          message.role === "assistant" ? "bg-muted mr-8" : "bg-primary/10 ml-8"
-        )}
-      >
-        <div className="flex-shrink-0">
-          <div className="p-2 bg-accent rounded-lg">
-            {message.role === "assistant" ? (
-              <Bot className="h-4 w-4 text-accent-foreground" />
-            ) : (
-              <User className="h-4 w-4 text-accent-foreground" />
-            )}
+    // Merge chat messages and toolMessages, sorted by id timestamp
+    type ChatMessage = (typeof messages)[number];
+    const allMessages: (ChatMessage | ToolCallMessage)[] = [
+      ...messages,
+      ...toolMessages,
+    ].sort((a, b) => {
+      // Extract timestamp from id if possible
+      const getTs = (m: { id: string }) => {
+        if (typeof m.id === "string" && m.id.startsWith("tool-")) {
+          return parseInt(m.id.replace("tool-", ""), 10);
+        }
+        if (typeof m.id === "string") {
+          return parseInt(m.id.split("-").pop() || "0", 10);
+        }
+        return 0;
+      };
+      return getTs(a) - getTs(b);
+    });
+    return allMessages.map((message) => {
+      if ((message as ToolCallMessage).role === "tool") {
+        return renderToolCallMessage(message as ToolCallMessage);
+      }
+      // ... existing code for user/assistant messages ...
+      return (
+        <div
+          key={message.id}
+          className={cn(
+            "flex gap-3 p-4 rounded-lg",
+            (message as ChatMessage).role === "assistant"
+              ? "bg-muted mr-8"
+              : "bg-primary/10 ml-8"
+          )}
+        >
+          <div className="flex-shrink-0">
+            <div className="p-2 bg-accent rounded-lg">
+              {(message as ChatMessage).role === "assistant" ? (
+                <Bot className="h-4 w-4 text-accent-foreground" />
+              ) : (
+                <User className="h-4 w-4 text-accent-foreground" />
+              )}
+            </div>
+          </div>
+          <div className="flex-1 space-y-2">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {(message as ChatMessage).content}
+            </ReactMarkdown>
+            {(message as ChatMessage).role === "assistant" &&
+              extractSqlQuery((message as ChatMessage).content) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const query = extractSqlQuery(
+                      (message as ChatMessage).content
+                    );
+                    if (query) executeQuery(query);
+                  }}
+                  className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200 border border-blue-200 dark:border-blue-800"
+                  disabled={isExecuting || !activeConnection?.connected}
+                >
+                  {isExecuting ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Play className="h-3 w-3" />
+                  )}
+                  <span className="text-xs">
+                    {isExecuting ? "Running..." : "Run Query"}
+                  </span>
+                </Button>
+              )}
           </div>
         </div>
-        <div className="flex-1 space-y-2">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {message.content}
-          </ReactMarkdown>
-
-          {message.role === "assistant" && extractSqlQuery(message.content) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const query = extractSqlQuery(message.content);
-                if (query) executeQuery(query);
-              }}
-              className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200 border border-blue-200 dark:border-blue-800"
-              disabled={isExecuting || !activeConnection?.connected}
-            >
-              {isExecuting ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Play className="h-3 w-3" />
-              )}
-              <span className="text-xs">
-                {isExecuting ? "Running..." : "Run Query"}
-              </span>
-            </Button>
-          )}
-
-          {queryResults && renderQueryResults()}
-          {queryError && (
-            <p className="text-sm text-red-500 mt-2">{queryError}</p>
-          )}
-        </div>
-      </div>
-    ));
+      );
+    });
   };
 
   return (
