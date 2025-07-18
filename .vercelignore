@@ -1,0 +1,15 @@
+README.md
+TODO.md
+node_modules
+.git
+.gitignore
+.vscode
+test
+tests
+__tests__
+coverage
+*.log
+*.env
+.env.*
+public/sql-wasm/
+public/speaksql.png

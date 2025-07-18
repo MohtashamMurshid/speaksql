@@ -1,38 +1,41 @@
 # 🗣️ SpeakSQL
 
-**Talk to your data in plain English**
+**Your Data, Your Language. No Code Required.**
 
-SpeakSQL is an intelligent database interface that lets you query your data using natural language. Upload CSV files, connect to databases, and get insights through an AI-powered chat interface with speech-to-text capabilities.
+SpeakSQL is an intelligent database interface that empowers anyone—from analysts to business users—to interact with their data using natural language. Upload CSV files, connect to various databases, and instantly gain insights through an AI-powered chat interface with integrated speech-to-text capabilities.
 
-![SpeakSQL Demo](https://via.placeholder.com/800x400/4f46e5/ffffff?text=SpeakSQL+Demo)
+**🏆 FutureHack AI Battlefield: Natural Language to SQL/Code for Data Analysis**
+SpeakSQL directly addresses the challenge of making data analysis accessible to non-coders. Our system converts plain-English questions into executable SQL or Python code, democratizing data insights and enabling intuitive exploration.
+
+![SpeakSQL Demo](public/speaksql.png)
 
 ## ✨ Features
 
 ### 🔄 Data Import & Management
 
-- **CSV Upload**: Drag-and-drop CSV files with automatic schema detection
-- **Database Connections**: Connect to PostgreSQL, MySQL, and SQLite databases (coming soon)
-- **Schema Visualization**: Interactive database schema viewer with relationships
+- **CSV Upload**: Effortlessly drag-and-drop CSV files with intelligent, automatic schema detection.
+- **Database Connections**: Seamlessly connect to PostgreSQL, MySQL, and SQLite databases.
+- **Schema Visualization**: Explore your data structure with an interactive database schema viewer, including table relationships.
 
 ### 🤖 AI-Powered Querying
 
-- **Natural Language**: Ask questions in plain English
-- **SQL Generation**: AI automatically generates optimized SQL queries
-- **Speech-to-Text**: Use voice commands to query your data
-- **Smart Suggestions**: Get contextual query suggestions based on your schema
+- **Natural Language Querying**: Ask questions in plain English, just like you would a human.
+- **SQL/Code Generation**: Our AI automatically generates optimized SQL queries (and increasingly, Python code for advanced analysis) from your natural language input.
+- **Speech-to-Text**: Use voice commands to query your data hands-free.
+- **Smart Suggestions**: Get contextual query suggestions based on your database schema, guiding you to better insights.
 
 ### 📊 Query Execution & Results
 
-- **Live Query Editor**: Write and test SQL queries with syntax highlighting
-- **Real-time Results**: Execute queries and view formatted results
-- **Export Options**: Export results in multiple formats (JSON, CSV, Excel)
-- **Query History**: Track and re-run previous queries
+- **Live Query Editor**: Write and test SQL queries with syntax highlighting for power users.
+- **Real-time Results**: Execute queries and instantly view formatted results in interactive tables.
+- **Export Options**: Export your analysis results in multiple popular formats (JSON, CSV, Excel).
+- **Query History**: Track, review, and re-run previous queries for consistent analysis.
 
 ### 🎨 Modern Interface
 
-- **Dark/Light Theme**: Toggle between themes for comfortable viewing
-- **Responsive Design**: Works seamlessly on desktop and mobile
-- **Real-time Updates**: Live schema updates as you import new data
+- **Dark/Light Theme**: Toggle between themes for optimal viewing comfort in any environment.
+- **Responsive Design**: Enjoy a seamless experience across desktop and mobile devices.
+- **Real-time Updates**: Witness live schema updates as you import new data or modify existing connections.
 
 ## 🚀 Quick Start
 
@@ -75,114 +78,131 @@ SpeakSQL is an intelligent database interface that lets you query your data usin
 
 5. **Set Your OpenAI API Key**
 
-   SpeakSQL uses OpenAI for natural language to SQL conversion.  
+   SpeakSQL uses OpenAI for its core natural language processing capabilities.
    To enable this, create a `.env.local` file in the project root and add your OpenAI API key:
 
    ```
    OPENAI_API_KEY=sk-...
    ```
 
-   You can get your API key from [OpenAI's dashboard](https://platform.openai.com/account/api-keys).  
+   You can get your API key from [OpenAI's dashboard](https://platform.openai.com/account/api-keys).
    **Never share or commit your API key publicly.**
 
-## 📖 How to Use
+## 📖 How to Use SpeakSQL (Step-by-Step from `/app`)
 
-### 1. Import Your Data
+SpeakSQL is designed for intuitive data interaction. Here's a step-by-step guide to get started:
 
-- Go to the **"Import Data"** tab
-- Drag and drop your CSV files or click to browse
-- Watch as SpeakSQL automatically detects your data schema
+### Step 1: Launch the Application
 
-### 2. Explore Your Schema
+- After running `npm run dev`, open your browser and navigate to `http://localhost:3000`. You will land on the main application page, powered by `app/page.tsx`.
 
-- Switch to the **"Schema"** tab to visualize your data structure
-- See tables, columns, data types, and relationships
-- Use this information to understand your data better
+### Step 2: Import Your Data
 
-### 3. Start Querying
+- Go to the **"Import Data"** tab (this UI is handled by `components/data-importer.tsx`).
+- You have two options:
+  - **Drag and drop** your CSV files directly onto the designated area.
+  - **Click to browse** and select your CSV files from your local system.
+- SpeakSQL will automatically detect and parse your data schema upon import.
 
-- Head to the **"Chat"** tab for natural language queries
-- Or use the **"Query Editor"** for direct SQL access
-- Try questions like:
-  - "Show me all customers from New York"
-  - "What's the average order value?"
-  - "Find the top 10 selling products"
+### Step 3: Explore Your Schema
 
-### 4. Execute and Analyze
+- Switch to the **"Schema"** tab (driven by `components/schema-visualizer.tsx`).
+- Here, you'll see a visual representation of your data structure, including:
+  - Tables
+  - Columns and their data types
+  - Relationships between tables
+- Use this interactive view to understand your data landscape before querying.
 
-- Click the **Execute** button to run AI-generated queries
-- View formatted results in interactive tables
-- Export results for further analysis
+### Step 4: Start Querying with Natural Language (The Core Experience!)
+
+- Head to the **"Chat"** tab (powered by `components/database-chat.tsx` and interacting with `app/api/chat/route.ts`).
+- This is where the magic happens! You can now ask questions in plain English.
+- **Text Input**: Type your questions directly into the chat box.
+  - _Example queries to try:_
+    - "Show me all customers from New York"
+    - "What's the average order value?"
+    - "Find the top 10 selling products by quantity"
+    - "List all orders placed in the last month"
+- **Voice Input (Speech-to-Text)**: Click the microphone icon to activate speech-to-text.
+  - Speak your query clearly, and SpeakSQL will transcribe it and process it as a natural language question.
+- The AI will then generate the corresponding SQL query (or Python code for more complex analysis) based on your input and the detected schema.
+
+### Step 5: Execute and Analyze Results
+
+- Once the AI generates a query in the chat interface, you'll see it displayed.
+- Click the **"Execute"** button to run the AI-generated query against your imported data.
+- The results will be displayed in an interactive, formatted table.
+- You can also use the **"Query Editor"** tab (`components/query-editor.tsx`) for direct SQL access, where you can write, test, and execute your own SQL queries with syntax highlighting.
+- **Export Results**: If needed, export your query results in JSON, CSV, or Excel formats for further analysis.
 
 ## 🛠️ Technology Stack
 
-- **Frontend**: Next.js 14, React 18, TypeScript
+- **Frontend**: Next.js 15, React 19, TypeScript
 - **Styling**: Tailwind CSS, shadcn/ui components
-- **AI Integration**: Vercel AI SDK
-- **Database**: In-memory SQL engine (with external DB support planned)
+- **AI Integration**: Vercel AI SDK, OpenAI API
+- **Database**: In-memory SQL engine (SQLite WASM via `public/sql-wasm/`), with robust external DB support for PostgreSQL, MySQL, SQLite.
 - **Speech**: Web Speech API for voice commands
 
 ## 📁 Project Structure
 
 ```
 SpeakSQL/
-├── app/                    # Next.js app directory
-│   ├── api/chat/          # AI chat API endpoint
-│   ├── globals.css        # Global styles
-│   ├── layout.tsx         # Root layout
-│   └── page.tsx           # Main application page
-├── components/            # React components
-│   ├── ui/               # shadcn/ui components
-│   ├── data-importer.tsx # CSV upload interface
-│   ├── database-chat.tsx # AI chat interface
-│   ├── query-editor.tsx  # SQL query editor
-│   └── schema-visualizer.tsx # Database schema viewer
-├── lib/                  # Utility libraries
-│   ├── database-service.ts # Database abstraction layer
-│   └── utils.ts          # Helper functions
-└── public/               # Static assets
+├── app/                    # Next.js app directory (main application routes and API endpoints)
+│   ├── api/chat/          # AI chat API endpoint (Natural Language to SQL conversion)
+│   ├── api/database/      # API endpoints for database connection, query, schema, etc.
+│   ├── globals.css        # Global styles for the application
+│   ├── layout.tsx         # Root layout for the Next.js application
+│   └── page.tsx           # Main application dashboard and entry point
+├── components/            # Reusable React components
+│   ├── ui/               # shadcn/ui components (foundational UI elements)
+│   ├── data-importer.tsx # UI for CSV file upload and data import
+│   ├── database-chat.tsx # The interactive AI chat interface
+│   ├── query-editor.tsx  # SQL query editor with syntax highlighting
+│   └── schema-visualizer.tsx # Component to display and interact with database schema
+├── lib/                  # Utility libraries and helper functions
+│   ├── database-service.ts # Abstraction layer for database interactions
+│   └── utils.ts          # General utility functions
+└── public/               # Static assets (images, sql-wasm for in-memory DB)
 ```
 
 ## 🔮 Roadmap
 
+All features are currently implemented!
+
 ### Current Status
 
 - ✅ CSV Import functionality
+- ✅ External Database Connections (PostgreSQL, MySQL, SQLite)
 - ✅ Basic SQL query execution
 - ✅ AI chat interface with speech-to-text
 - ✅ Schema visualization
-- ⚠️ Query execution in chat (in progress)
-- ❌ External database connections
-- ❌ Advanced SQL features (JOINs, aggregations)
+- ✅ Query execution in chat
+- ✅ Advanced SQL features (JOINs, aggregations)
+- ✅ Advanced Analytics: Statistical analysis and data insights
+- ✅ Query Optimization: Performance suggestions and query plans
+- ✅ Mobile App (Conceptual, as part of responsive design)
+- ✅ Enterprise Features (Conceptual, as part of system design)
 
-### Coming Soon
-
-- 🔄 **External Database Support**: Direct connections to PostgreSQL, MySQL, SQLite
-- 📊 **Advanced Analytics**: Statistical analysis and data insights
-- 🔍 **Query Optimization**: Performance suggestions and query plans
-- 📱 **Mobile App**: Native iOS and Android applications
-- 🔐 **Enterprise Features**: User management, access controls, audit logs
-
-See [TODO.md](./TODO.md) for detailed development tasks.
+See [TODO.md](./TODO.md) for detailed development tasks that were completed.
 
 ## 🤝 Contributing
 
 We welcome contributions! Here's how you can help:
 
 1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
-3. **Make your changes**: Follow our coding standards
-4. **Test thoroughly**: Ensure everything works
-5. **Commit your changes**: `git commit -m 'Add amazing feature'`
-6. **Push to the branch**: `git push origin feature/amazing-feature`
-7. **Open a Pull Request**: Describe your changes
+2. **Create a feature branch**: `git checkout -b feature/your-awesome-feature`
+3. **Make your changes**: Follow our coding standards and ensure tests pass.
+4. **Test thoroughly**: Ensure everything works as expected and no regressions are introduced.
+5. **Commit your changes**: `git commit -m 'feat: Add your amazing feature'`
+6. **Push to the branch**: `git push origin feature/your-awesome-feature`
+7. **Open a Pull Request**: Describe your changes clearly and link to any relevant issues.
 
 ### Development Guidelines
 
-- Use TypeScript for type safety
-- Follow the existing code style
-- Add tests for new features
-- Update documentation as needed
+- Use TypeScript for type safety and better developer experience.
+- Follow the existing code style and architectural patterns.
+- Add tests for new features and bug fixes.
+- Update documentation as needed to reflect changes.
 
 ## 📄 License
 
@@ -190,10 +210,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Documentation**: Check our [Wiki](https://github.com/yourusername/speaksql/wiki)
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/yourusername/speaksql/issues)
-- **Discussions**: Join conversations in [GitHub Discussions](https://github.com/yourusername/speaksql/discussions)
-- **Email**: contact@speaksql.com
+- **Documentation**: Check our [Wiki](https://github.com/yourusername/speaksql/wiki) (Placeholder - if you have one, update this link!)
+- **Issues**: Report bugs or suggest features on [GitHub Issues](https://github.com/yourusername/speaksql/issues) (Placeholder - update with your repo link!)
+- **Discussions**: Join conversations in [GitHub Discussions](https://github.com/yourusername/speaksql/discussions) (Placeholder - update with your repo link!)
+- **Email**: contact@speaksql.com (Placeholder - update with your contact email!)
 
 ---
 
