@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
+import { SpeechRecorder } from "@/components/speech-recorder";
 
 interface TableSchema {
   name: string;
@@ -89,6 +90,7 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
   // const [queryError, setQueryError] = useState<string | null>(null);
   const [toolMessages, setToolMessages] = useState<ToolCallMessage[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const sendButtonRef = useRef<HTMLButtonElement>(null);
 
   const {
     messages,
@@ -554,7 +556,7 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
       {/* Input Form */}
       <div className="p-6 border-t border-border flex-shrink-0">
         <form onSubmit={handleFormSubmit} className="flex gap-3">
-          <div className="flex-1">
+          <div className="flex-1 relative">
             <Textarea
               value={input}
               onChange={handleInputChange}
@@ -563,10 +565,29 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
                   ? "Ask me anything about your database..."
                   : "Connect to a database or upload data to start chatting"
               }
-              className="resize-none max-h-[150px]"
+              className="resize-none max-h-[150px] pr-10"
               rows={2}
               disabled={isLoading || !canInteract}
             />
+            <div className="absolute bottom-2 right-2">
+              <SpeechRecorder 
+                onTranscription={(text, autoSubmit) => {
+                  handleInputChange({ target: { value: text } } as React.ChangeEvent<HTMLTextAreaElement>);
+                  
+                  // Auto-submit the form if requested
+                  if (autoSubmit && text.trim() && canInteract && !isLoading) {
+                    // Use setTimeout to ensure React has updated the input value first
+                    setTimeout(() => {
+                      // Simulate a click on the submit button
+                      if (sendButtonRef.current) {
+                        sendButtonRef.current.click();
+                      }
+                    }, 100);
+                  }
+                }}
+                disabled={isLoading || !canInteract}
+              />
+            </div>
           </div>
           <Button
             type="submit"
@@ -574,6 +595,7 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
               !input.trim() || isLoading || !canInteract
             }
             size="lg"
+            ref={sendButtonRef}
           >
             <Send className="h-4 w-4" />
           </Button>
