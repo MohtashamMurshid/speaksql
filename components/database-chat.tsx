@@ -160,7 +160,7 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
 
   // --- Tool Call Execution ---
   const executeQuery = async (query: string) => {
-    if (!activeConnection) {
+    if (!activeConnection?.connected) {
       // Add error tool message
       const errorMsg: ToolCallMessage = {
         id: `tool-${Date.now()}`,
@@ -168,7 +168,7 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
         toolType: "sql-query",
         status: "error",
         input: query,
-        error: "No active database connection",
+        error: "No active database connection to execute queries",
       };
       setToolMessages((prev) => [...prev, errorMsg]);
       return;
@@ -385,7 +385,7 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
                     if (query) executeQuery(query);
                   }}
                   className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200 border border-blue-200 dark:border-blue-800"
-                  disabled={isExecuting || !activeConnection?.connected}
+                  disabled={isExecuting}
                 >
                   {isExecuting ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -402,6 +402,9 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
       );
     });
   };
+
+  // Check if we have either a connected database or schema data from uploads
+  const canInteract = activeConnection?.connected || (schema && schema.length > 0);
 
   return (
     <div className="flex flex-col h-[700px] overflow-hidden">
@@ -556,19 +559,19 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
               value={input}
               onChange={handleInputChange}
               placeholder={
-                activeConnection?.connected
+                canInteract
                   ? "Ask me anything about your database..."
-                  : "Connect to a database to start chatting"
+                  : "Connect to a database or upload data to start chatting"
               }
               className="resize-none max-h-[150px]"
               rows={2}
-              disabled={isLoading || !activeConnection?.connected}
+              disabled={isLoading || !canInteract}
             />
           </div>
           <Button
             type="submit"
             disabled={
-              !input.trim() || isLoading || !activeConnection?.connected
+              !input.trim() || isLoading || !canInteract
             }
             size="lg"
           >

@@ -78,6 +78,7 @@ export function DataImporter({
 }: DataImporterProps) {
   const [importedFiles, setImportedFiles] = useState<ImportedData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAddingAll, setIsAddingAll] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [addedFiles, setAddedFiles] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -246,6 +247,26 @@ export function DataImporter({
     setImportedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const addAllToSchema = async () => {
+    // Get all files that haven't been added yet
+    const filesToAdd = importedFiles.filter(
+      (file) => !addedFiles.has(file.fileName)
+    );
+    
+    if (filesToAdd.length === 0) return;
+    
+    setIsAddingAll(true);
+    
+    try {
+      // Add each file to schema
+      for (const file of filesToAdd) {
+        await addToSchema(file);
+      }
+    } finally {
+      setIsAddingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -260,20 +281,20 @@ export function DataImporter({
       {/* Database Connections */}
       <DatabaseConnector onConnectionChange={onConnectionChange} />
       {/* CSV Import Section */}
-      <div className="border-t pt-8">
-        <div className="text-center mb-6">
-          <h3 className="text-xl font-semibold text-foreground mb-2">
+      <div className="border-t pt-10">
+        <div className="text-center mb-8">
+          <h3 className="text-xl font-semibold text-foreground mb-3">
             CSV File Import
           </h3>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground max-w-lg mx-auto">
             Upload CSV files and automatically generate database schemas
           </p>
         </div>
 
         {/* File Drop Zone */}
         <Card
-          className={`border-dashed border-2 transition-colors ${
-            dragOver ? "border-primary bg-accent" : "border-border"
+          className={`border-dashed border-2 transition-colors mb-10 ${
+            dragOver ? "border-primary bg-accent/30" : "border-border"
           }`}
           onDrop={handleDrop}
           onDragOver={(e) => {
@@ -283,18 +304,20 @@ export function DataImporter({
           onDragLeave={() => setDragOver(false)}
         >
           <CardContent className="p-12 text-center">
-            <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">
+            <Upload className="w-16 h-16 text-muted-foreground mx-auto mb-6" />
+            <h3 className="text-lg font-semibold text-foreground mb-3">
               Drop CSV files here
             </h3>
-            <p className="text-muted-foreground mb-4">
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
               Or click to select files from your computer
             </p>
             <Button
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing}
+              size="lg"
+              className="px-6"
             >
-              <FileText className="w-4 h-4 mr-2" />
+              <FileText className="w-5 h-5 mr-2" />
               {isProcessing ? "Processing..." : "Select Files"}
             </Button>
             <input
@@ -310,139 +333,169 @@ export function DataImporter({
 
         {/* Imported Files */}
         {importedFiles.length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-foreground">
-              Imported Files ({importedFiles.length})
-            </h3>
+          <div className="space-y-6 mt-8">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-foreground">
+                Imported Files ({importedFiles.length})
+              </h3>
+              <Button 
+                onClick={addAllToSchema} 
+                disabled={importedFiles.every(file => addedFiles.has(file.fileName)) || isAddingAll}
+                variant="default"
+                size="sm"
+                className={importedFiles.length > 0 && importedFiles.every(file => addedFiles.has(file.fileName)) 
+                  ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800" 
+                  : ""}
+              >
+                {isAddingAll ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    Adding...
+                  </>
+                ) : importedFiles.length > 0 && importedFiles.every(file => addedFiles.has(file.fileName)) ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2 text-green-600" />
+                    All Added
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-4 h-4 mr-2" />
+                    Add All to Schema
+                  </>
+                )}
+              </Button>
+            </div>
 
-            {importedFiles.map((file, index) => (
-              <Card key={index} className="border-primary/20">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-accent rounded-lg">
-                        <Table className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">{file.fileName}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {file.rowCount} rows • {file.columns.length} columns
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => addToSchema(file)}
-                        disabled={addedFiles.has(file.fileName)}
-                        className={
-                          addedFiles.has(file.fileName)
-                            ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800"
-                            : ""
-                        }
-                      >
-                        {addedFiles.has(file.fileName) ? (
-                          <>
-                            <Check className="w-4 h-4 mr-2 text-green-600" />
-                            Added
-                          </>
-                        ) : (
-                          <>
-                            <Database className="w-4 h-4 mr-2" />
-                            Add to Schema
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeImportedFile(index)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-
-                <CardContent>
-                  {/* Column Info */}
-                  <div className="mb-4">
-                    <h5 className="font-medium mb-2">Detected Columns</h5>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {file.columns.map((column, colIndex) => (
-                        <div
-                          key={colIndex}
-                          className="flex items-center justify-between p-2 bg-muted rounded"
-                        >
-                          <span className="font-medium text-sm">
-                            {column.name}
-                          </span>
-                          <Badge variant="secondary" className="text-xs">
-                            {column.type}
-                          </Badge>
+            <div className="grid gap-6">
+              {importedFiles.map((file, index) => (
+                <Card key={index} className="border-primary/20">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-accent rounded-lg">
+                          <Table className="w-5 h-5 text-primary" />
                         </div>
-                      ))}
+                        <div>
+                          <h4 className="font-semibold">{file.fileName}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {file.rowCount} rows • {file.columns.length} columns
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addToSchema(file)}
+                          disabled={addedFiles.has(file.fileName)}
+                          className={
+                            addedFiles.has(file.fileName)
+                              ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800"
+                              : ""
+                          }
+                        >
+                          {addedFiles.has(file.fileName) ? (
+                            <>
+                              <Check className="w-4 h-4 mr-2 text-green-600" />
+                              Added
+                            </>
+                          ) : (
+                            <>
+                              <Database className="w-4 h-4 mr-2" />
+                              Add to Schema
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeImportedFile(index)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  </CardHeader>
 
-                  {/* Data Preview */}
-                  <div>
-                    <h5 className="font-medium mb-2">Data Preview</h5>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm border rounded">
-                        <thead>
-                          <tr className="bg-muted">
-                            {file.columns.map((column) => (
-                              <th
-                                key={column.name}
-                                className="text-left p-2 border-b"
-                              >
-                                {column.name}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {file.preview.map((row, rowIndex) => (
-                            <tr key={rowIndex} className="border-b">
-                              {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className="p-2">
-                                  {cell || "NULL"}
-                                </td>
+                  <CardContent>
+                    {/* Column Info */}
+                    <div className="mb-6">
+                      <h5 className="font-medium mb-3">Detected Columns</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {file.columns.map((column, colIndex) => (
+                          <div
+                            key={colIndex}
+                            className="flex items-center justify-between p-2 bg-muted rounded"
+                          >
+                            <span className="font-medium text-sm">
+                              {column.name}
+                            </span>
+                            <Badge variant="secondary" className="text-xs">
+                              {column.type}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Data Preview */}
+                    <div>
+                      <h5 className="font-medium mb-3">Data Preview</h5>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm border rounded">
+                          <thead>
+                            <tr className="bg-muted">
+                              {file.columns.map((column) => (
+                                <th
+                                  key={column.name}
+                                  className="text-left p-2 border-b"
+                                >
+                                  {column.name}
+                                </th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {file.preview.map((row, rowIndex) => (
+                              <tr key={rowIndex} className="border-b">
+                                {row.map((cell, cellIndex) => (
+                                  <td key={cellIndex} className="p-2">
+                                    {cell || "NULL"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Current Schema */}
         {schema.length > 0 && (
-          <Card>
+          <Card className="mt-8">
             <CardHeader>
-              <h3 className="font-semibold">Current Database Schema</h3>
+              <h3 className="font-semibold text-lg">Current Database Schema</h3>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {schema.map((table) => (
-                  <div key={table.name} className="p-3 border rounded-lg">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Database className="w-4 h-4" />
+                  <div key={table.name} className="p-4 border rounded-lg hover:border-primary/50 transition-colors">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Database className="w-4 h-4 text-primary" />
                       <h4 className="font-medium">{table.name}</h4>
                       <Badge variant="secondary" className="text-xs">
                         {table.columns.length} cols
                       </Badge>
                     </div>
-                    <div className="space-y-1 text-sm">
+                    <div className="space-y-2 text-sm">
                       {table.columns.map((column) => (
-                        <div key={column.name} className="flex justify-between">
+                        <div key={column.name} className="flex justify-between py-1 px-2 rounded hover:bg-accent/50">
                           <span>{column.name}</span>
                           <span className="text-muted-foreground">
                             {column.type}
