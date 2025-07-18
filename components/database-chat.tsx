@@ -555,7 +555,7 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
 
       {/* Input Form */}
       <div className="p-6 border-t border-border flex-shrink-0">
-        <form onSubmit={handleFormSubmit} className="flex gap-3">
+        <form onSubmit={handleFormSubmit} className="flex items-end gap-3">
           <div className="flex-1 relative">
             <Textarea
               value={input}
@@ -565,8 +565,8 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
                   ? "Ask me anything about your database..."
                   : "Connect to a database or upload data to start chatting"
               }
-              className="resize-none max-h-[150px] pr-10"
-              rows={2}
+              className="resize-none pr-10 min-h-[52px] py-3 px-4"
+              rows={1}
               disabled={isLoading || !canInteract}
             />
             <div className="absolute bottom-2 right-2">
@@ -594,10 +594,11 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
             disabled={
               !input.trim() || isLoading || !canInteract
             }
-            size="lg"
+            size="icon"
+            className="h-[52px] w-[52px] rounded-full shrink-0"
             ref={sendButtonRef}
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-5 w-5" />
           </Button>
         </form>
       </div>
