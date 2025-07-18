@@ -64,17 +64,17 @@ export function SpeechRecorder({ onTranscription, disabled = false }: SpeechReco
   return (
     <Button
       onClick={isRecording ? stopRecording : startRecording}
-      variant={isRecording ? "destructive" : "outline"}
+      variant={isRecording ? "destructive" : "ghost"}
       size="icon"
       disabled={disabled || isTranscribing}
-      className="rounded-full"
+      className="rounded-full h-8 w-8"
       title={isRecording ? "Stop recording" : "Start voice recording"}
       type="button" // Ensure it doesn't submit a form when clicked
     >
       {isTranscribing ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="h-3 w-3 animate-spin" />
       ) : (
-        <Mic className={`h-4 w-4 ${isRecording ? "animate-pulse" : ""}`} />
+        <Mic className={`h-3 w-3 ${isRecording ? "animate-pulse" : ""}`} />
       )}
     </Button>
   );
