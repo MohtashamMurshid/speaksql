@@ -47,9 +47,9 @@ interface ImportedData {
 interface DatabaseConnection {
   id: string;
   name: string;
-  type: "postgresql" | "mysql" | "sqlite";
+  type: "postgresql" | "mysql" | "sqlite" | "csv";
   connected: boolean;
-  config: {
+  config?: {
     host?: string;
     port?: number;
     database?: string;
@@ -234,6 +234,13 @@ export function DataImporter({
       const newSchema = await databaseService.getSchema();
       onSchemaChange(newSchema);
       onDataImported(importedData);
+
+      // Notify parent about CSV connection changes
+      if (onConnectionChange) {
+        const connections = databaseService.getAllConnections();
+        const activeConnection = databaseService.getActiveConnection();
+        onConnectionChange(connections, activeConnection?.id || null);
+      }
 
       // Mark this file as added
       setAddedFiles((prev) => new Set(prev).add(importedData.fileName));

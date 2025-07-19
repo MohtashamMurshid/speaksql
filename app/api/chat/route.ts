@@ -20,9 +20,9 @@ interface TableSchema {
 interface DatabaseConnection {
   id: string;
   name: string;
-  type: "postgresql" | "mysql" | "sqlite";
+  type: "postgresql" | "mysql" | "sqlite" | "csv";
   connected: boolean;
-  config: {
+  config?: {
     host?: string;
     port?: number;
     database?: string;
@@ -44,7 +44,10 @@ interface DatabaseConnection {
 }
 
 // Tool factory for executing SQL queries
-function createExecuteQueryTool(activeConnection: DatabaseConnection | null) {
+function createExecuteQueryTool(
+  activeConnection: DatabaseConnection | null,
+  schema: TableSchema[]
+) {
   return tool({
     description:
       "Execute a SQL query against the connected database and return the results. Use this when the user asks for data analysis, wants to run a query, or needs to see actual data from the database.",
@@ -56,26 +59,50 @@ function createExecuteQueryTool(activeConnection: DatabaseConnection | null) {
     }),
     execute: async ({ query, explanation }) => {
       try {
-        if (!activeConnection || !activeConnection.connected) {
+        let data;
+
+        // Handle CSV queries (either with CSV connection or when we have schema but no connection)
+        if (
+          (activeConnection && activeConnection.type === "csv") ||
+          (!activeConnection && schema.length > 0)
+        ) {
+          // For CSV connections, we need to use a different approach since we can't import databaseService in the API route
+          // We'll make a special request to a CSV query endpoint
+          const response = await fetch(
+            `${
+              process.env.NEXTAUTH_URL || "http://localhost:3000"
+            }/api/database/csv-query`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                query: query,
+              }),
+            }
+          );
+
+          data = await response.json();
+        } else if (activeConnection) {
+          // For SQL databases, use the existing API
+          const response = await fetch(
+            `${
+              process.env.NEXTAUTH_URL || "http://localhost:3000"
+            }/api/database/query`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                type: activeConnection.type,
+                config: activeConnection.config,
+                query: query,
+              }),
+            }
+          );
+
+          data = await response.json();
+        } else {
           throw new Error("No active database connection available");
         }
-
-        const response = await fetch(
-          `${
-            process.env.NEXTAUTH_URL || "http://localhost:3000"
-          }/api/database/query`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: activeConnection.type,
-              config: activeConnection.config,
-              query: query,
-            }),
-          }
-        );
-
-        const data = await response.json();
 
         if (data.error) {
           throw new Error(data.error);
@@ -294,15 +321,19 @@ Remember: You're not just generating queries, you're teaching users to understan
     };
 
     // Call OpenAI with improved configuration
-    const result =
-      activeConnection && activeConnection.connected
-        ? await streamText({
-            ...baseParams,
-            tools: {
-              execute_query: createExecuteQueryTool(activeConnection),
-            },
-          })
-        : await streamText(baseParams);
+    // Enable tools if we have an active SQL connection OR if we have CSV schema
+    const hasQueryCapability =
+      (activeConnection && activeConnection.connected) ||
+      (schema.length > 0 && !activeConnection);
+
+    const result = hasQueryCapability
+      ? await streamText({
+          ...baseParams,
+          tools: {
+            execute_query: createExecuteQueryTool(activeConnection, schema),
+          },
+        })
+      : await streamText(baseParams);
 
     return result.toDataStreamResponse();
   } catch (error) {

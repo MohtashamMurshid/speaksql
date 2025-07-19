@@ -44,9 +44,9 @@ interface TableSchema {
 interface DatabaseConnection {
   id: string;
   name: string;
-  type: "postgresql" | "mysql" | "sqlite";
+  type: "postgresql" | "mysql" | "sqlite" | "csv";
   connected: boolean;
-  config: {
+  config?: {
     host?: string;
     port?: number;
     database?: string;
@@ -356,16 +356,25 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
             value={input}
             onChange={handleInputChange}
             placeholder={
-              activeConnection?.connected
+              activeConnection?.connected || schema.length > 0
                 ? "Ask me anything about your database..."
-                : "Connect to a database to start chatting"
+                : "Connect to a database or import CSV files to start chatting"
             }
             className="pr-20"
             rows={2}
-            disabled={isLoading || !activeConnection?.connected}
+            disabled={
+              isLoading || (!activeConnection?.connected && schema.length === 0)
+            }
           />
           <div className="absolute right-2 bottom-2 flex space-x-2">
-            <Button type="submit" size="icon" disabled={isLoading}>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={
+                isLoading ||
+                (!activeConnection?.connected && schema.length === 0)
+              }
+            >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

@@ -37,9 +37,9 @@ interface QueryResult {
 interface DatabaseConnection {
   id: string;
   name: string;
-  type: "postgresql" | "mysql" | "sqlite";
+  type: "postgresql" | "mysql" | "sqlite" | "csv";
   connected: boolean;
-  config: {
+  config?: {
     host?: string;
     port?: number;
     database?: string;
