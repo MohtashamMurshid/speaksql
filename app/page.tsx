@@ -28,9 +28,9 @@ interface TableSchema {
 interface DatabaseConnection {
   id: string;
   name: string;
-  type: "postgresql" | "mysql" | "sqlite";
+  type: "postgresql" | "mysql" | "sqlite" | "csv";
   connected: boolean;
-  config: {
+  config?: {
     host?: string;
     port?: number;
     database?: string;
@@ -78,6 +78,14 @@ export default function Home() {
         // Load existing schema if any
         const schema = await databaseService.getSchema();
         setDatabaseSchema(schema);
+
+        // Set up CSV connection if we have CSV data
+        const connections = databaseService.getAllConnections();
+        const csvConnection = connections.find((conn) => conn.type === "csv");
+        if (csvConnection) {
+          setActiveConnection(csvConnection);
+          setConnections(connections);
+        }
       } catch (error) {
         console.error("Failed to initialize database:", error);
       }
@@ -160,14 +168,17 @@ export default function Home() {
     },
   ];
 
-  const visibleTabs = activeConnection
-    ? tabs
-    : tabs.filter((tab) => tab.id === "import");
+  // Show all tabs when we have any connection (including CSV) or when we have schema from CSV imports
+  const visibleTabs =
+    activeConnection || databaseSchema.length > 0
+      ? tabs
+      : tabs.filter((tab) => tab.id === "import");
 
   const renderActiveTab = () => {
     switch (activeTab) {
       case "chat":
-        if (activeConnection) {
+        // Allow chat with CSV data (activeConnection) or when we have schema from CSV imports
+        if (activeConnection || databaseSchema.length > 0) {
           return (
             <DatabaseChat
               schema={databaseSchema}
@@ -177,7 +188,8 @@ export default function Home() {
         }
         return null;
       case "schema":
-        if (activeConnection) {
+        // Allow schema visualization when we have any schema (CSV or SQL)
+        if (activeConnection || databaseSchema.length > 0) {
           return (
             <SchemaVisualizer
               schema={databaseSchema}
@@ -187,7 +199,8 @@ export default function Home() {
         }
         return null;
       case "query":
-        if (activeConnection) {
+        // Allow query editor when we have any connection or CSV schema
+        if (activeConnection || databaseSchema.length > 0) {
           return (
             <QueryEditor
               schema={databaseSchema}
@@ -263,9 +276,11 @@ export default function Home() {
                   )}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {activeConnection.type === "sqlite"
-                    ? activeConnection.config.filePath
-                    : `${activeConnection.config.host}:${activeConnection.config.port}/${activeConnection.config.database}`}
+                  {activeConnection.type === "csv"
+                    ? "In-memory CSV data"
+                    : activeConnection.type === "sqlite"
+                    ? activeConnection.config?.filePath
+                    : `${activeConnection.config?.host}:${activeConnection.config?.port}/${activeConnection.config?.database}`}
                 </div>
               </div>
               <div className="flex items-center gap-2">
