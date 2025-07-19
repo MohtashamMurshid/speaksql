@@ -14,6 +14,7 @@ import {
   Play,
   RefreshCw,
   Database,
+  Mic,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -84,6 +85,11 @@ interface ToolCallMessage {
 
 export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
   // Remove old queryResults/queryError state
   // const [queryResults, setQueryResults] = useState<QueryResult | null>(null);
   // const [queryError, setQueryError] = useState<string | null>(null);
@@ -156,6 +162,51 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     handleSubmit(e);
+  };
+
+  const handleMicClick = async () => {
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+    } else {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/webm",
+        });
+        audioChunksRef.current = [];
+        const formData = new FormData();
+        formData.append("file", audioBlob, "recording.webm");
+
+        setIsTranscribing(true);
+        try {
+          const response = await fetch("/api/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+          const data = await response.json();
+          if (response.ok) {
+            const syntheticEvent = {
+              target: { value: data.text },
+              currentTarget: { value: data.text },
+            } as React.ChangeEvent<HTMLTextAreaElement>;
+            handleInputChange(syntheticEvent);
+          } else {
+            console.error("Transcription error:", data.error);
+          }
+        } catch (error) {
+          console.error("Error sending audio for transcription:", error);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+    }
   };
 
   // --- Tool Call Execution ---
@@ -550,30 +601,42 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
 
       {/* Input Form */}
       <div className="p-6 border-t border-border flex-shrink-0">
-        <form onSubmit={handleFormSubmit} className="flex gap-3">
-          <div className="flex-1">
-            <Textarea
-              value={input}
-              onChange={handleInputChange}
-              placeholder={
-                activeConnection?.connected
-                  ? "Ask me anything about your database..."
-                  : "Connect to a database to start chatting"
-              }
-              className="resize-none max-h-[150px]"
-              rows={2}
-              disabled={isLoading || !activeConnection?.connected}
-            />
-          </div>
-          <Button
-            type="submit"
-            disabled={
-              !input.trim() || isLoading || !activeConnection?.connected
+        <form onSubmit={handleFormSubmit} className="relative">
+          <Textarea
+            value={input}
+            onChange={handleInputChange}
+            placeholder={
+              activeConnection?.connected
+                ? "Ask me anything about your database..."
+                : "Connect to a database to start chatting"
             }
-            size="lg"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+            className="pr-20"
+            rows={2}
+            disabled={isLoading || !activeConnection?.connected}
+          />
+          <div className="absolute right-2 bottom-2 flex space-x-2">
+            <Button type="submit" size="icon" disabled={isLoading}>
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              onClick={handleMicClick}
+              variant={isRecording ? "destructive" : "outline"}
+              className={cn({ "animate-intense-pulse": isRecording })}
+              disabled={isTranscribing}
+            >
+              {isTranscribing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </form>
       </div>
     </div>
