@@ -127,6 +127,7 @@ export default function Home() {
           .getSchema()
           .then(setDatabaseSchema)
           .catch(console.error);
+        setActiveTab("import");
       }
     },
     []
@@ -159,29 +160,42 @@ export default function Home() {
     },
   ];
 
+  const visibleTabs = activeConnection
+    ? tabs
+    : tabs.filter((tab) => tab.id === "import");
+
   const renderActiveTab = () => {
     switch (activeTab) {
       case "chat":
-        return (
-          <DatabaseChat
-            schema={databaseSchema}
-            activeConnection={activeConnection || undefined}
-          />
-        );
+        if (activeConnection) {
+          return (
+            <DatabaseChat
+              schema={databaseSchema}
+              activeConnection={activeConnection || undefined}
+            />
+          );
+        }
+        return null;
       case "schema":
-        return (
-          <SchemaVisualizer
-            schema={databaseSchema}
-            onSchemaChange={setDatabaseSchema}
-          />
-        );
+        if (activeConnection) {
+          return (
+            <SchemaVisualizer
+              schema={databaseSchema}
+              onSchemaChange={setDatabaseSchema}
+            />
+          );
+        }
+        return null;
       case "query":
-        return (
-          <QueryEditor
-            schema={databaseSchema}
-            activeConnectionId={activeConnection?.id || null}
-          />
-        );
+        if (activeConnection) {
+          return (
+            <QueryEditor
+              schema={databaseSchema}
+              activeConnectionId={activeConnection?.id || null}
+            />
+          );
+        }
+        return null;
       case "import":
         return (
           <DataImporter
@@ -271,7 +285,7 @@ export default function Home() {
 
         {/* Tab Navigation */}
         <div className="flex flex-wrap justify-center gap-4 mb-8">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <Button
