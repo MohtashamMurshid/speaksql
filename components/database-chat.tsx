@@ -19,6 +19,14 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface TableSchema {
   name: string;
@@ -177,7 +185,17 @@ export function DatabaseChat({ schema, activeConnection }: DatabaseChatProps) {
             </div>
           </div>
           <div className="flex-1 space-y-2">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                table: ({ ...props }) => <Table className="my-4" {...props} />,
+                thead: ({ ...props }) => <TableHeader {...props} />,
+                tbody: ({ ...props }) => <TableBody {...props} />,
+                tr: ({ ...props }) => <TableRow {...props} />,
+                th: ({ ...props }) => <TableHead {...props} />,
+                td: ({ ...props }) => <TableCell {...props} />,
+              }}
+            >
               {message.content}
             </ReactMarkdown>
           </div>
