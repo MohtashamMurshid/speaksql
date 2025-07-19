@@ -70,7 +70,7 @@ function createExecuteQueryTool(
           // We'll make a special request to a CSV query endpoint
           const response = await fetch(
             `${
-              process.env.NEXTAUTH_URL || "http://localhost:3000"
+              process.env.VERCEL_URL || "http://localhost:3000"
             }/api/database/csv-query`,
             {
               method: "POST",
@@ -86,7 +86,7 @@ function createExecuteQueryTool(
           // For SQL databases, use the existing API
           const response = await fetch(
             `${
-              process.env.NEXTAUTH_URL || "http://localhost:3000"
+              process.env.VERCEL_URL || "http://localhost:3000"
             }/api/database/query`,
             {
               method: "POST",
