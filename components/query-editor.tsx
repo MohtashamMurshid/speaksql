@@ -6,8 +6,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Copy, Loader2, XCircle, Database } from "lucide-react";
+import {
+  Play,
+  Copy,
+  Loader2,
+  XCircle,
+  Database,
+  BarChart3,
+} from "lucide-react";
 import { databaseService } from "@/lib/database-service";
+import { ChartContainer } from "@/components/charts/chart-container";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface TableSchema {
   name: string;
@@ -67,6 +81,7 @@ export function QueryEditor({ schema, activeConnectionId }: QueryEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [activeConnection, setActiveConnection] =
     useState<DatabaseConnection | null>(null);
+  const [chartDialogOpen, setChartDialogOpen] = useState(false);
 
   // Load active connection from localStorage
   useEffect(() => {
@@ -340,6 +355,20 @@ export function QueryEditor({ schema, activeConnectionId }: QueryEditorProps) {
         </CardContent>
       </Card>
 
+      {/* Visualize Button - shown when we have results */}
+      {result && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => setChartDialogOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <BarChart3 className="w-4 h-4" />
+            Visualize Data
+          </Button>
+        </div>
+      )}
+
       {/* Results */}
       {error && (
         <Card className="border-destructive">
@@ -396,6 +425,21 @@ export function QueryEditor({ schema, activeConnectionId }: QueryEditorProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Chart Popup Dialog */}
+      <Dialog open={chartDialogOpen} onOpenChange={setChartDialogOpen}>
+        <DialogContent className="max-w-5xl w-[90vw]">
+          <DialogHeader>
+            <DialogTitle>Data Visualization</DialogTitle>
+          </DialogHeader>
+          {result && (
+            <ChartContainer
+              data={result}
+              onClose={() => setChartDialogOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

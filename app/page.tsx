@@ -79,11 +79,15 @@ export default function Home() {
         const schema = await databaseService.getSchema();
         setDatabaseSchema(schema);
 
-        // Set up CSV connection if we have CSV data
+        // Set up CSV connection only if we have CSV data (schema exists)
         const connections = databaseService.getAllConnections();
         const csvConnection = connections.find((conn) => conn.type === "csv");
-        if (csvConnection) {
+        if (csvConnection && csvConnection.connected && schema.length > 0) {
           setActiveConnection(csvConnection);
+          setConnections(connections);
+        } else {
+          // No CSV data available, reset connections
+          setActiveConnection(null);
           setConnections(connections);
         }
       } catch (error) {
@@ -168,17 +172,17 @@ export default function Home() {
     },
   ];
 
-  // Show all tabs when we have any connection (including CSV) or when we have schema from CSV imports
+  // Show all tabs when we have schema data available
   const visibleTabs =
-    activeConnection || databaseSchema.length > 0
+    databaseSchema.length > 0
       ? tabs
       : tabs.filter((tab) => tab.id === "import");
 
   const renderActiveTab = () => {
     switch (activeTab) {
       case "chat":
-        // Allow chat with CSV data (activeConnection) or when we have schema from CSV imports
-        if (activeConnection || databaseSchema.length > 0) {
+        // Allow chat when we have schema data (either from CSV or SQL connection)
+        if (databaseSchema.length > 0) {
           return (
             <DatabaseChat
               schema={databaseSchema}
@@ -188,8 +192,8 @@ export default function Home() {
         }
         return null;
       case "schema":
-        // Allow schema visualization when we have any schema (CSV or SQL)
-        if (activeConnection || databaseSchema.length > 0) {
+        // Allow schema visualization when we have any schema data
+        if (databaseSchema.length > 0) {
           return (
             <SchemaVisualizer
               schema={databaseSchema}
@@ -199,8 +203,8 @@ export default function Home() {
         }
         return null;
       case "query":
-        // Allow query editor when we have any connection or CSV schema
-        if (activeConnection || databaseSchema.length > 0) {
+        // Allow query editor when we have schema data
+        if (databaseSchema.length > 0) {
           return (
             <QueryEditor
               schema={databaseSchema}
