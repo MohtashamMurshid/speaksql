@@ -66,6 +66,35 @@ function createExecuteQueryTool(
           (activeConnection && activeConnection.type === "csv") ||
           (!activeConnection && schema.length > 0)
         ) {
+          // Prepare CSV tables data
+          let tables: Array<{
+            name: string;
+            columns: Array<{ name: string; type: string }>;
+            data: string[][];
+          }> = [];
+
+          if (activeConnection?.sampleData) {
+            // Convert sampleData to the format expected by CSV query endpoint
+            tables = activeConnection.sampleData.map((sampleTable) => ({
+              name: sampleTable.tableName,
+              columns: sampleTable.columns.map((colName) => ({
+                name: colName,
+                type: "VARCHAR(255)", // Default type, could be enhanced
+              })),
+              data: sampleTable.rows,
+            }));
+          } else if (schema.length > 0) {
+            // If we have schema but no connection, create empty tables
+            tables = schema.map((schemaTable) => ({
+              name: schemaTable.name,
+              columns: schemaTable.columns.map((col) => ({
+                name: col.name,
+                type: col.type || "VARCHAR(255)",
+              })),
+              data: [], // Empty data
+            }));
+          }
+
           // For CSV connections, we need to use a different approach since we can't import databaseService in the API route
           // We'll make a special request to a CSV query endpoint
           const response = await fetch(
@@ -77,6 +106,7 @@ function createExecuteQueryTool(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 query: query,
+                tables: tables,
               }),
             }
           );
@@ -134,8 +164,8 @@ function generateExampleQueries(schema: TableSchema[]): string {
 
   const examples = [];
 
-  // Basic SELECT examples
-  schema.slice(0, 2).forEach((table) => {
+  // Basic SELECT examples for first 2-3 tables
+  schema.slice(0, 3).forEach((table) => {
     examples.push(`-- Get all records from ${table.name}
 SELECT * FROM ${table.name} LIMIT 10;`);
 
@@ -143,6 +173,50 @@ SELECT * FROM ${table.name} LIMIT 10;`);
       const firstFewColumns = table.columns.slice(0, 3).map((col) => col.name);
       examples.push(`-- Get specific columns from ${table.name}
 SELECT ${firstFewColumns.join(", ")} FROM ${table.name};`);
+    }
+
+    // Add column-specific examples
+    const numericColumns = table.columns.filter(
+      (col) =>
+        col.type.toLowerCase().includes("int") ||
+        col.type.toLowerCase().includes("decimal") ||
+        col.type.toLowerCase().includes("float") ||
+        col.type.toLowerCase().includes("number")
+    );
+
+    if (numericColumns.length > 0) {
+      const column = numericColumns[0];
+      examples.push(`-- Analyze ${column.name} in ${table.name}
+SELECT MIN(${column.name}), MAX(${column.name}), AVG(${column.name}) FROM ${table.name};`);
+    }
+
+    // Date/time examples
+    const dateColumns = table.columns.filter(
+      (col) =>
+        col.type.toLowerCase().includes("date") ||
+        col.type.toLowerCase().includes("time") ||
+        col.type.toLowerCase().includes("timestamp")
+    );
+
+    if (dateColumns.length > 0) {
+      const column = dateColumns[0];
+      examples.push(`-- Group by ${column.name} in ${table.name}
+SELECT DATE(${column.name}), COUNT(*) FROM ${table.name} GROUP BY DATE(${column.name});`);
+    }
+
+    // Count and grouping examples
+    const textColumns = table.columns.filter(
+      (col) =>
+        col.type.toLowerCase().includes("varchar") ||
+        col.type.toLowerCase().includes("text") ||
+        col.type.toLowerCase().includes("char")
+    );
+
+    if (textColumns.length > 0) {
+      const column =
+        textColumns.find((col) => !col.primaryKey) || textColumns[0];
+      examples.push(`-- Count unique values in ${column.name}
+SELECT ${column.name}, COUNT(*) FROM ${table.name} GROUP BY ${column.name} ORDER BY COUNT(*) DESC;`);
     }
   });
 
@@ -158,11 +232,120 @@ SELECT ${firstFewColumns.join(", ")} FROM ${table.name};`);
       examples.push(`-- Join ${table.name} with ${fkColumn.foreignKey.table}
 SELECT t1.*, t2.*
 FROM ${table.name} t1
-JOIN ${fkColumn.foreignKey.table} t2 ON t1.${fkColumn.name} = t2.${fkColumn.foreignKey.column};`);
+JOIN ${fkColumn.foreignKey.table} t2 ON t1.${fkColumn.name} = t2.${fkColumn.foreignKey.column}
+LIMIT 10;`);
     }
   }
 
+  // Cross-table analysis examples
+  if (schema.length > 1) {
+    examples.push(`-- Get row counts for all tables
+${schema
+  .map(
+    (table) =>
+      `SELECT '${table.name}' as table_name, COUNT(*) as row_count FROM ${table.name}`
+  )
+  .join("\nUNION ALL\n")};`);
+  }
+
   return examples.join("\n\n");
+}
+
+// Helper function to generate intelligent suggested questions
+function generateSuggestedQuestions(
+  schema: TableSchema[],
+  activeConnection?: DatabaseConnection
+): string[] {
+  if (schema.length === 0) return [];
+
+  const suggestions = [];
+
+  // Table-specific suggestions
+  schema.slice(0, 3).forEach((table) => {
+    suggestions.push(`Show me the first 10 rows from ${table.name}`);
+    suggestions.push(`What's the structure of the ${table.name} table?`);
+    suggestions.push(`How many records are in ${table.name}?`);
+
+    // Column-based suggestions
+    const numericColumns = table.columns.filter(
+      (col) =>
+        col.type.toLowerCase().includes("int") ||
+        col.type.toLowerCase().includes("decimal") ||
+        col.type.toLowerCase().includes("float") ||
+        col.type.toLowerCase().includes("number")
+    );
+
+    if (numericColumns.length > 0) {
+      const column = numericColumns[0];
+      suggestions.push(`What's the average ${column.name} in ${table.name}?`);
+      suggestions.push(`Show me the distribution of ${column.name} values`);
+    }
+
+    const dateColumns = table.columns.filter(
+      (col) =>
+        col.type.toLowerCase().includes("date") ||
+        col.type.toLowerCase().includes("time") ||
+        col.type.toLowerCase().includes("timestamp")
+    );
+
+    if (dateColumns.length > 0) {
+      const column = dateColumns[0];
+      suggestions.push(`Show me trends over time using ${column.name}`);
+      suggestions.push(`Group ${table.name} records by ${column.name}`);
+    }
+
+    const textColumns = table.columns.filter(
+      (col) =>
+        col.type.toLowerCase().includes("varchar") ||
+        col.type.toLowerCase().includes("text") ||
+        col.type.toLowerCase().includes("char")
+    );
+
+    if (textColumns.length > 1) {
+      const column =
+        textColumns.find((col) => !col.primaryKey) || textColumns[0];
+      suggestions.push(`What are the unique values in ${column.name}?`);
+      suggestions.push(`Find the most common ${column.name} values`);
+    }
+  });
+
+  // Relationship-based suggestions
+  const tablesWithForeignKeys = schema.filter((table) =>
+    table.columns.some((col) => col.foreignKey)
+  );
+
+  tablesWithForeignKeys.forEach((table) => {
+    const fkColumn = table.columns.find((col) => col.foreignKey);
+    if (fkColumn?.foreignKey) {
+      suggestions.push(
+        `Show me ${table.name} data joined with ${fkColumn.foreignKey.table}`
+      );
+      suggestions.push(
+        `Analyze the relationship between ${table.name} and ${fkColumn.foreignKey.table}`
+      );
+    }
+  });
+
+  // Cross-table suggestions
+  if (schema.length > 1) {
+    suggestions.push(`Compare data across different tables`);
+    suggestions.push(`Show me a summary of all tables`);
+    suggestions.push(`Find relationships between tables`);
+  }
+
+  // Sample data specific suggestions
+  if (activeConnection?.sampleData) {
+    const sampleTable = activeConnection.sampleData[0];
+    if (sampleTable && sampleTable.rows.length > 0) {
+      suggestions.push(`Analyze patterns in ${sampleTable.tableName} data`);
+      suggestions.push(
+        `Find duplicates or anomalies in ${sampleTable.tableName}`
+      );
+      suggestions.push(`Create a report for ${sampleTable.tableName}`);
+    }
+  }
+
+  return suggestions;
 }
 
 // Helper function to validate schema
@@ -242,6 +425,12 @@ export async function POST(req: Request) {
     // Generate example queries
     const exampleQueries = generateExampleQueries(schema);
 
+    // Generate suggested questions
+    const suggestedQuestions = generateSuggestedQuestions(
+      schema,
+      activeConnection
+    );
+
     // Generate sample data description
     const sampleDataDescription = activeConnection?.sampleData
       ? activeConnection.sampleData
@@ -253,6 +442,7 @@ export async function POST(req: Request) {
               totalRows: number;
             }) => {
               const sampleRows = sample.rows
+                .slice(0, 3) // Show only first 3 rows for context
                 .map((row: string[]) => `  ${row.join(" | ")}`)
                 .join("\n");
               return `Table: ${sample.tableName} (${
@@ -260,7 +450,7 @@ export async function POST(req: Request) {
               } total rows)
 Columns: ${sample.columns.join(", ")}
 Sample data:
-${sampleRows}`;
+${sampleRows}${sample.rows.length > 3 ? "\n  ... and more rows" : ""}`;
             }
           )
           .join("\n\n")
@@ -277,6 +467,12 @@ ${sampleDataDescription}
 
 ## Example Queries:
 ${exampleQueries}
+
+## Suggested Questions Users Might Ask:
+${suggestedQuestions
+  .slice(0, 8)
+  .map((q) => `- ${q}`)
+  .join("\n")}
 
 ## Your Capabilities:
 1. **SQL Query Generation & Execution**: Generate and automatically execute SQL queries using the execute_query tool
@@ -299,6 +495,8 @@ ${exampleQueries}
 - Explain complex queries in simple terms
 - Be educational and explain the "why" behind your recommendations
 - Handle edge cases and provide error-resistant queries
+- Reference specific table and column names from the schema when relevant
+- Provide actionable insights from query results
 
 ## Response Format for Query Execution:
 1. Brief explanation of what you'll query and why
@@ -306,7 +504,9 @@ ${exampleQueries}
 3. Interpret and explain the results
 4. Provide insights or follow-up suggestions
 
-Remember: You're not just generating queries, you're teaching users to understand their data better while providing real insights from their actual data.`;
+Remember: You're not just generating queries, you're teaching users to understand their data better while providing real insights from their actual data. Always use the actual table names (${schema
+      .map((t) => t.name)
+      .join(", ")}) and column names when crafting responses and queries.`;
 
     // Setup parameters for streamText
     const baseParams = {

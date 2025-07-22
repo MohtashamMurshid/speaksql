@@ -33,7 +33,11 @@ interface TableSchema {
     foreignKey?: {
       table: string;
       column: string;
+      onDelete?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
+      onUpdate?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
     };
+    nullable?: boolean;
+    unique?: boolean;
   }>;
 }
 
@@ -44,7 +48,11 @@ interface TableColumn {
   foreignKey?: {
     table: string;
     column: string;
+    onDelete?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
+    onUpdate?: "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION";
   };
+  nullable?: boolean;
+  unique?: boolean;
 }
 
 interface TableNodeData {
@@ -84,8 +92,28 @@ function TableNode({ data }: { data: TableNodeData }) {
                   </Badge>
                 )}
                 {column.foreignKey && (
-                  <Badge variant="outline" className="text-xs px-1 py-0">
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-700"
+                    title={`References ${column.foreignKey.table}.${column.foreignKey.column}`}
+                  >
                     FK
+                  </Badge>
+                )}
+                {column.nullable === false && (
+                  <Badge
+                    variant="secondary"
+                    className="text-xs px-1 py-0 bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-200"
+                  >
+                    NOT NULL
+                  </Badge>
+                )}
+                {column.unique && (
+                  <Badge
+                    variant="secondary"
+                    className="text-xs px-1 py-0 bg-purple-50 text-purple-700 dark:bg-purple-900 dark:text-purple-200"
+                  >
+                    UNIQUE
                   </Badge>
                 )}
               </div>
@@ -193,6 +221,38 @@ export function SchemaVisualizer({
     return { nodes, edges };
   }, []);
 
+  // Determine relationship cardinality
+  const getRelationshipType = (
+    sourceTable: string,
+    sourceColumn: string,
+    targetTable: string,
+    targetColumn: string
+  ) => {
+    const sourceTableSchema = schema.find((t) => t.name === sourceTable);
+    const targetTableSchema = schema.find((t) => t.name === targetTable);
+
+    if (!sourceTableSchema || !targetTableSchema) return "1:N";
+
+    const sourceCol = sourceTableSchema.columns.find(
+      (c) => c.name === sourceColumn
+    );
+    const targetCol = targetTableSchema.columns.find(
+      (c) => c.name === targetColumn
+    );
+
+    // If source column is unique and target is PK = 1:1
+    if (sourceCol?.unique && targetCol?.primaryKey) return "1:1";
+
+    // If source is PK and target has unique FK = 1:1
+    if (sourceCol?.primaryKey && targetCol?.unique) return "1:1";
+
+    // If both are unique = 1:1
+    if (sourceCol?.unique && targetCol?.unique) return "1:1";
+
+    // Default to 1:N (one-to-many)
+    return "1:N";
+  };
+
   // Convert schema to nodes and edges
   useEffect(() => {
     if (schema.length === 0) return;
@@ -219,6 +279,15 @@ export function SchemaVisualizer({
     schema.forEach((table) => {
       table.columns.forEach((column) => {
         if (column.foreignKey) {
+          const relationshipType = getRelationshipType(
+            table.name,
+            column.name,
+            column.foreignKey.table,
+            column.foreignKey.column
+          );
+
+          const isOneToOne = relationshipType === "1:1";
+
           newEdges.push({
             id: `${table.name}-${column.name}-${column.foreignKey.table}`,
             source: table.name,
@@ -226,20 +295,35 @@ export function SchemaVisualizer({
             sourceHandle: `${table.name}-${column.name}-source`,
             targetHandle: `${column.foreignKey.table}-${column.foreignKey.column}-target`,
             type: "smoothstep",
-            animated: true,
+            animated: !isOneToOne, // Only animate 1:N relationships
             style: {
-              stroke: "hsl(var(--primary))",
-              strokeWidth: 2,
+              stroke: isOneToOne
+                ? "hsl(var(--secondary-foreground))"
+                : "hsl(var(--primary))",
+              strokeWidth: isOneToOne ? 3 : 2,
+              strokeDasharray: isOneToOne ? "5,5" : undefined,
             },
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: "hsl(var(--primary))",
+              color: isOneToOne
+                ? "hsl(var(--secondary-foreground))"
+                : "hsl(var(--primary))",
             },
-            label: `${column.name} → ${column.foreignKey.column}`,
-            labelStyle: { fontSize: 12, fontWeight: "bold" },
+            label: `${column.name} → ${column.foreignKey.column} (${relationshipType})`,
+            labelStyle: {
+              fontSize: 11,
+              fontWeight: "bold",
+              color: isOneToOne
+                ? "hsl(var(--secondary-foreground))"
+                : "hsl(var(--primary))",
+            },
             labelBgStyle: {
               fill: "hsl(var(--background))",
-              fillOpacity: 0.8,
+              fillOpacity: 0.9,
+              stroke: isOneToOne
+                ? "hsl(var(--secondary-foreground))"
+                : "hsl(var(--primary))",
+              strokeWidth: 1,
             },
           });
         }
@@ -274,6 +358,48 @@ export function SchemaVisualizer({
     linkElement.click();
   };
 
+  // Get relationship summary
+  const getRelationshipSummary = () => {
+    const relationships: Array<{
+      from: string;
+      to: string;
+      type: string;
+      column: string;
+      referencedColumn: string;
+    }> = [];
+
+    schema.forEach((table) => {
+      table.columns.forEach((column) => {
+        if (column.foreignKey) {
+          const type = getRelationshipType(
+            table.name,
+            column.name,
+            column.foreignKey.table,
+            column.foreignKey.column
+          );
+          relationships.push({
+            from: table.name,
+            to: column.foreignKey.table,
+            type,
+            column: column.name,
+            referencedColumn: column.foreignKey.column,
+          });
+        }
+      });
+    });
+
+    return relationships;
+  };
+
+  const relationshipSummary = getRelationshipSummary();
+
+  // Log relationship summary for debugging
+  useEffect(() => {
+    if (relationshipSummary.length > 0) {
+      console.log("Database relationships:", relationshipSummary);
+    }
+  }, [relationshipSummary]);
+
   return (
     <div className="h-[600px] relative">
       {/* Header Controls */}
@@ -304,6 +430,59 @@ export function SchemaVisualizer({
           Export
         </Button>
       </div>
+
+      {/* Relationship Legend */}
+      {schema.length > 0 && edges.length > 0 && (
+        <div className="absolute top-4 right-4 z-10">
+          <Card className="p-3 w-72 shadow-lg">
+            <div className="text-sm font-medium mb-2">Relationship Legend</div>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-1 bg-primary rounded"></div>
+                <span>One-to-Many (1:N) - Animated</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-1 bg-secondary-foreground rounded"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(45deg, transparent, transparent 2px, currentColor 2px, currentColor 4px)",
+                  }}
+                ></div>
+                <span>One-to-One (1:1) - Dashed</span>
+              </div>
+              <div className="mt-3 space-y-1">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Column Types:
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant="default" className="text-xs px-1 py-0">
+                    PK
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="text-xs px-1 py-0 bg-blue-50 text-blue-700 border-blue-200"
+                  >
+                    FK
+                  </Badge>
+                  <Badge
+                    variant="secondary"
+                    className="text-xs px-1 py-0 bg-red-50 text-red-700"
+                  >
+                    NOT NULL
+                  </Badge>
+                  <Badge
+                    variant="secondary"
+                    className="text-xs px-1 py-0 bg-purple-50 text-purple-700"
+                  >
+                    UNIQUE
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* React Flow */}
       {schema.length > 0 ? (

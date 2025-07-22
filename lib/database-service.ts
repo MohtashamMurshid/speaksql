@@ -242,16 +242,23 @@ class DatabaseService {
   async initializeCsvDatabase(): Promise<void> {
     if (typeof window !== "undefined") {
       try {
-        // Create default CSV connection if none exists
+        // Only initialize if we don't have a CSV connection yet
+        // Don't auto-create or activate connection until CSV data is imported
         const csvConnections = Array.from(this.connections.values()).filter(
           (c) => c.type === "csv"
         );
-        if (csvConnections.length === 0) {
-          const csvId = await this.addConnection({
-            name: "CSV Data",
-            type: "csv",
-          });
-          await this.setActiveConnection(csvId);
+
+        // If we have a CSV connection but no schema, disconnect it
+        if (csvConnections.length > 0) {
+          const schema = await this.getSchema();
+          if (schema.length === 0) {
+            // Disconnect CSV connections that have no data
+            csvConnections.forEach((conn) => {
+              conn.connected = false;
+              this.connections.set(conn.id, conn);
+            });
+            this.activeConnection = null;
+          }
         }
       } catch (error) {
         console.error("Failed to initialize database:", error);
@@ -283,6 +290,30 @@ class DatabaseService {
 
     // Create table with data
     this.queryEngine.createTable(tableName, columns, rows);
+
+    // Ensure we have a CSV connection and activate it
+    await this.ensureCsvConnection();
+  }
+
+  private async ensureCsvConnection(): Promise<void> {
+    // Check if we have a CSV connection
+    let csvConnection = Array.from(this.connections.values()).find(
+      (c) => c.type === "csv"
+    );
+
+    // Create one if it doesn't exist
+    if (!csvConnection) {
+      const csvId = await this.addConnection({
+        name: "CSV Data",
+        type: "csv",
+      });
+      csvConnection = this.connections.get(csvId);
+    }
+
+    // Activate the CSV connection
+    if (csvConnection) {
+      await this.setActiveConnection(csvConnection.id);
+    }
   }
 
   private detectColumnType(values: string[]): string {
