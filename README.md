@@ -208,12 +208,7 @@ We welcome contributions! Here's how you can help:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
 
-- **Documentation**: Check our [Wiki](https://github.com/yourusername/speaksql/wiki) (Placeholder - if you have one, update this link!)
-- **Issues**: Report bugs or suggest features on [GitHub Issues](https://github.com/yourusername/speaksql/issues) (Placeholder - update with your repo link!)
-- **Discussions**: Join conversations in [GitHub Discussions](https://github.com/yourusername/speaksql/discussions) (Placeholder - update with your repo link!)
-- **Email**: contact@speaksql.com (Placeholder - update with your contact email!)
 
 ---
 
